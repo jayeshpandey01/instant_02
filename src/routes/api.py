@@ -164,7 +164,16 @@ def debug_probe():
         "probe_results": probe_results,
         "used_cookie": used_cookie,
         "fallback": fallback,
-        "has_ffmpeg": has_ffmpeg
+        "has_ffmpeg": has_ffmpeg,
+        "formats_debug": [
+            {
+                "id": f.get("format_id"),
+                "height": f.get("height"),
+                "vcodec": f.get("vcodec"),
+                "acodec": f.get("acodec"),
+                "ext": f.get("ext")
+            } for f in (info.get("formats") or [])
+        ]
     })
 
 @api_bp.route("/api/info", methods=["POST"])
