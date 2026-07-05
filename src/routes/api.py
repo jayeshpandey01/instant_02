@@ -90,11 +90,11 @@ def debug_probe():
     job_id = "probe_" + uuid.uuid4().hex[:8]
     out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}_%(playlist_index)s.%(ext)s")
     
+    from src.downloader import ensure_ffmpeg, build_video_format_string, get_ffprobe_path
+    
     # Run yt-dlp download
     ensure_ffmpeg()
     has_ffmpeg = shutil.which("ffmpeg") is not None
-    
-    from src.downloader import build_video_format_string, get_ffprobe_path
     
     ydl_opts = {
         "noplaylist": False,
