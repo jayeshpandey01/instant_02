@@ -204,10 +204,11 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
 def run_download(job_id, url, format_choice, format_id, cookies_data=None):
     try:
         job = jobs[job_id]
-        out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
+        # Append playlist index to support multi-item downloads without overwriting
+        out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}_%(playlist_index)s.%(ext)s")
 
         ydl_opts_base = {
-            "noplaylist": True,
+            "noplaylist": False,
             "outtmpl": out_template,
             "quiet": True,
             "no_warnings": True,
@@ -237,31 +238,58 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         if fallback:
             job["fallback_used"] = used_cookie
 
-        files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
+        # Find all files starting with job_id
+        files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*"))
         if not files:
             job["status"] = "error"
             job["error"] = "Download completed but no file was found"
             return
 
-        if format_choice == "audio":
-            target = [f for f in files if f.endswith(".mp3")]
-            chosen = target[0] if target else files[0]
+        # If multiple files are downloaded, zip them
+        if len(files) > 1:
+            import zipfile
+            zip_filename = f"{job_id}.zip"
+            zip_path = os.path.join(DOWNLOAD_DIR, zip_filename)
+            
+            try:
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                    for idx, f in enumerate(sorted(files)):
+                        base = os.path.basename(f)
+                        _, f_ext = os.path.splitext(base)
+                        friendly_name = f"Item_{idx+1}{f_ext}"
+                        zip_file.write(f, friendly_name)
+                
+                # Clean up individual unzipped files
+                for f in files:
+                    try:
+                        os.remove(f)
+                    except OSError:
+                        pass
+                
+                chosen = zip_path
+                ext = ".zip"
+            except Exception as zip_err:
+                job["status"] = "error"
+                job["error"] = f"Failed to bundle zip package: {str(zip_err)}"
+                return
         else:
-            target = [f for f in files if f.endswith(".mp4")]
-            chosen = target[0] if target else files[0]
-
-        for f in files:
-            if f != chosen:
-                try:
-                    os.remove(f)
-                except OSError:
-                    pass
+            # Single file download
+            chosen = files[0]
+            ext = os.path.splitext(chosen)[1]
 
         job["status"] = "done"
         job["file"] = chosen
-        ext = os.path.splitext(chosen)[1]
         
-        title = info.get("title", "") if info else ""
+        # Determine title from first entry if it was a playlist/carousel
+        title = ""
+        if info:
+            if info.get("_type") == "playlist" or "entries" in info:
+                entries = info.get("entries", [])
+                if entries:
+                    title = info.get("title") or entries[0].get("title")
+            else:
+                title = info.get("title")
+        
         if not title:
             title = job.get("title", "").strip()
 
@@ -309,7 +337,7 @@ def get_info():
 
     cookies_data = data.get("cookies")
     ydl_opts_base = {
-        "noplaylist": True,
+        "noplaylist": False,
         "quiet": True,
         "no_warnings": True,
     }
@@ -318,30 +346,52 @@ def get_info():
         if err:
             return jsonify({"error": err.split("\n")[-1]}), 400
 
-        # Build quality options — keep best format per resolution
-        best_by_height = {}
-        for f in info.get("formats", []):
-            height = f.get("height")
-            if height and f.get("vcodec", "none") != "none":
-                tbr = f.get("tbr") or 0
-                if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
-                    best_by_height[height] = f
-
+        # Check if extracted info represents a playlist or carousel
+        is_carousel = False
+        item_count = 0
         formats = []
-        for height, f in best_by_height.items():
-            formats.append({
-                "id": f["format_id"],
-                "label": f"{height}p",
-                "height": height,
-            })
-        formats.sort(key=lambda x: x["height"], reverse=True)
+        
+        if info.get("_type") == "playlist" or "entries" in info:
+            is_carousel = True
+            entries = info.get("entries", [])
+            item_count = len(entries)
+            
+            first_entry = entries[0] if entries else {}
+            title = info.get("title") or first_entry.get("title") or "Gallery Post"
+            thumbnail = info.get("thumbnail") or first_entry.get("thumbnail") or ""
+            uploader = info.get("uploader") or first_entry.get("uploader") or ""
+            duration = info.get("duration") or first_entry.get("duration")
+        else:
+            title = info.get("title", "")
+            thumbnail = info.get("thumbnail", "")
+            uploader = info.get("uploader", "")
+            duration = info.get("duration")
+            
+            # Build quality options — keep best format per resolution
+            best_by_height = {}
+            for f in info.get("formats", []):
+                height = f.get("height")
+                if height and f.get("vcodec", "none") != "none":
+                    tbr = f.get("tbr") or 0
+                    if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
+                        best_by_height[height] = f
+
+            for height, f in best_by_height.items():
+                formats.append({
+                    "id": f["format_id"],
+                    "label": f"{height}p",
+                    "height": height,
+                })
+            formats.sort(key=lambda x: x["height"], reverse=True)
 
         res_data = {
-            "title": info.get("title", ""),
-            "thumbnail": info.get("thumbnail", ""),
-            "duration": info.get("duration"),
-            "uploader": info.get("uploader", ""),
+            "title": title,
+            "thumbnail": thumbnail,
+            "duration": duration,
+            "uploader": uploader,
             "formats": formats,
+            "is_carousel": is_carousel,
+            "item_count": item_count,
         }
         if fallback:
             res_data["fallback_used"] = used_cookie

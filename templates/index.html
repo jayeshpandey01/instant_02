@@ -700,6 +700,8 @@
               formats: data.formats || [],
               selectedFormatId: data.formats?.[0]?.id || null,
               fallbackUsed: data.fallback_used || null,
+              isCarousel: data.is_carousel || false,
+              itemCount: data.item_count || 0,
             };
           }
         } catch (err) {
@@ -771,7 +773,9 @@
       }
 
       let qualityChips = '';
-      if (!isAudio && c.formats && c.formats.length > 1) {
+      if (c.isCarousel) {
+        qualityChips = `<span class="carousel-badge" style="font-size: 0.65rem; background: var(--accent); color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 8px;">📷 Gallery (${c.itemCount} items)</span>`;
+      } else if (!isAudio && c.formats && c.formats.length > 1) {
         qualityChips = c.formats.map(f =>
           `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" onclick="pickFormat(${idx}, '${f.id}')">${f.label}</button>`
         ).join('');
@@ -779,7 +783,7 @@
 
       let actionHtml = '';
       if (c.status === 'ready') {
-        actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Download</button>${qualityChips}`;
+        actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">${c.isCarousel ? 'Download Gallery' : 'Download'}</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
         actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
       } else if (c.status === 'done') {
