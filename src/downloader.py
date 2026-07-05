@@ -254,6 +254,11 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                 pass
 
 def needs_transcoding(input_path):
+    _, ext = os.path.splitext(input_path)
+    ext = ext.lower()
+    if ext in [".webm", ".mkv", ".avi"]:
+        return True
+
     import subprocess
     import shutil
     ffmpeg_bin = ensure_ffmpeg()
@@ -262,7 +267,7 @@ def needs_transcoding(input_path):
         
     cmd = [ffmpeg_bin, "-i", input_path]
     try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
         stderr = result.stderr.lower()
         
         has_video = "video:" in stderr
@@ -278,7 +283,7 @@ def needs_transcoding(input_path):
             
         return False
     except Exception:
-        return True
+        return False
 
 def convert_to_ios_compatible_mp4(input_path):
     import subprocess
