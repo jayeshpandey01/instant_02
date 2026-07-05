@@ -1,5 +1,2 @@
 flask
 yt-dlp
-imageio-ffmpeg
-requests
-python-dotenv

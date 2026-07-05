@@ -16,25 +16,10 @@ def ensure_ffmpeg():
     import urllib.request
     import zipfile
     
-    # 1. Try system-installed ffmpeg
     system_ffmpeg = shutil.which("ffmpeg")
     if system_ffmpeg:
         return system_ffmpeg
         
-    # 2. Try imageio-ffmpeg static package
-    try:
-        import imageio_ffmpeg
-        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
-        if ffmpeg_path and os.path.exists(ffmpeg_path):
-            # Put imageio-ffmpeg binary folder into PATH so subprocesses can find it
-            ffmpeg_dir = os.path.dirname(ffmpeg_path)
-            if ffmpeg_dir not in os.environ["PATH"]:
-                os.environ["PATH"] = ffmpeg_dir + os.pathsep + os.environ["PATH"]
-            return ffmpeg_path
-    except ImportError:
-        pass
-        
-    # 3. Fallback to dynamic downloader (for backward compatibility on Linux)
     if not sys.platform.startswith("linux"):
         return None
         
@@ -63,7 +48,6 @@ def ensure_ffmpeg():
     except Exception as e:
         print(f"Error downloading ffmpeg: {e}")
         return None
-
 
 def get_cookie_opts(cookies_data, url=None):
     """
@@ -182,10 +166,6 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
     it attempts to match a local cookie file and retries.
     Returns (info_dict_or_none, used_cookie_file, fallback_activated, error_msg_or_none)
     """
-    ffmpeg_bin = ensure_ffmpeg()
-    if ffmpeg_bin:
-        ydl_opts_base = {**ydl_opts_base, "ffmpeg_location": ffmpeg_bin}
-        
     mode = cookies_data.get("mode", "none") if cookies_data else "none"
     cookie_opts, temp_cookie_file = get_cookie_opts(cookies_data, url)
     
@@ -254,20 +234,14 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                 pass
 
 def needs_transcoding(input_path):
-    _, ext = os.path.splitext(input_path)
-    ext = ext.lower()
-    if ext in [".webm", ".mkv", ".avi"]:
-        return True
-
     import subprocess
     import shutil
-    ffmpeg_bin = ensure_ffmpeg()
-    if not ffmpeg_bin:
+    if not shutil.which("ffmpeg"):
         return False
         
-    cmd = [ffmpeg_bin, "-i", input_path]
+    cmd = ["ffmpeg", "-i", input_path]
     try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
         stderr = result.stderr.lower()
         
         has_video = "video:" in stderr
@@ -283,12 +257,11 @@ def needs_transcoding(input_path):
             
         return False
     except Exception:
-        return False
+        return True
 
 def convert_to_ios_compatible_mp4(input_path):
     import subprocess
-    ffmpeg_bin = ensure_ffmpeg()
-    if not ffmpeg_bin:
+    if not shutil.which("ffmpeg"):
         return input_path
 
     _, ext = os.path.splitext(input_path)
@@ -301,7 +274,7 @@ def convert_to_ios_compatible_mp4(input_path):
     if not needs_transcoding(input_path):
         # File is already H.264/AAC — just run a fast stream-copy to add faststart moov atom
         cmd = [
-            ffmpeg_bin, "-y",
+            "ffmpeg", "-y",
             "-i", input_path,
             "-c", "copy",
             "-movflags", "+faststart",
@@ -310,7 +283,7 @@ def convert_to_ios_compatible_mp4(input_path):
     else:
         # Full transcode to H.264/AAC with faststart
         cmd = [
-            ffmpeg_bin, "-y",
+            "ffmpeg", "-y",
             "-i", input_path,
             "-c:v", "libx264",
             "-preset", "ultrafast",

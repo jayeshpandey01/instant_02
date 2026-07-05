@@ -1,10 +1,7 @@
 import os
 from dotenv import load_dotenv
 
-if os.environ.get("VERCEL"):
-    DOWNLOAD_DIR = "/tmp"
-else:
-    DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
+DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 

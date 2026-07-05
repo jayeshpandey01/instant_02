@@ -1,5 +1,5 @@
 import os
-from flask import Blueprint, request, jsonify, send_file, redirect, after_this_request
+from flask import Blueprint, request, jsonify, send_file, after_this_request
 from src.config import DOWNLOAD_DIR, BASE_DIR
 from src.auth import generate_auth_token
 from src.downloader import run_ytdlp_with_fallback, detect_media_type
@@ -206,9 +206,6 @@ def download_file(job_id):
     job = jobs.get(job_id)
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready"}), 404
-
-    if job.get("url"):
-        return redirect(job["url"])
 
     file_path = job["file"]
     filename = job["filename"]

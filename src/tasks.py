@@ -268,28 +268,14 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 chosen = downloaded_files[0]
                 ext = os.path.splitext(chosen)[1]
 
-            title = info.get("title", "").strip() or job.get("title", "").strip()
-            job["filename"] = f"{(title[:20].strip() or os.path.basename(chosen))}{ext}"
-
-            is_valid, integrity_error = verify_file_integrity(chosen)
-            if not is_valid:
-                job["status"] = "error"
-                job["error"] = integrity_error
-                try: os.remove(chosen)
-                except OSError: pass
-                return
-
-            public_url = upload_to_vercel_blob(chosen, job["filename"])
-            if public_url:
-                job["url"] = public_url
-                try: os.remove(chosen)
-                except OSError: pass
-
             job["status"] = "done"
             job["file"] = chosen
+            title = info.get("title", "").strip() or job.get("title", "").strip()
+            job["filename"] = f"{(title[:20].strip() or os.path.basename(chosen))}{ext}"
             return
             
         if format_choice == "audio":
+
             ydl_opts_base["format"] = "bestaudio/best"
             if has_ffmpeg:
                 ydl_opts_base["postprocessors"] = [{
@@ -299,13 +285,13 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 }]
         elif format_id:
             if has_ffmpeg:
-                ydl_opts_base["format"] = f"{format_id}+bestaudio[ext=m4a]/bestaudio/best"
+                ydl_opts_base["format"] = f"{format_id}+bestaudio[acodec^=mp4a]/bestaudio/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
             else:
                 ydl_opts_base["format"] = format_id
         else:
             if has_ffmpeg:
-                ydl_opts_base["format"] = "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+                ydl_opts_base["format"] = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
             else:
                 ydl_opts_base["format"] = "best[ext=mp4]/best"
@@ -396,6 +382,9 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 chosen = convert_to_ios_compatible_mp4(chosen)
             ext = os.path.splitext(chosen)[1]
 
+        job["status"] = "done"
+        job["file"] = chosen
+        
         # Determine title from first entry if it was a playlist/carousel
         title = ""
         if info:
@@ -414,101 +403,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             job["filename"] = f"{safe_title}{ext}" if safe_title else os.path.basename(chosen)
         else:
             job["filename"] = os.path.basename(chosen)
-
-        is_valid, integrity_error = verify_file_integrity(chosen)
-        if not is_valid:
-            job["status"] = "error"
-            job["error"] = integrity_error
-            try: os.remove(chosen)
-            except OSError: pass
-            return
-
-        public_url = upload_to_vercel_blob(chosen, job["filename"])
-        if public_url:
-            job["url"] = public_url
-            try: os.remove(chosen)
-            except OSError: pass
-
-        job["status"] = "done"
-        job["file"] = chosen
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)
-
-
-def verify_file_integrity(file_path):
-    from src.downloader import ensure_ffmpeg
-    import subprocess
-    ffmpeg_bin = ensure_ffmpeg()
-    if not ffmpeg_bin:
-        return True, None
-        
-    cmd = [ffmpeg_bin, "-i", file_path]
-    try:
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
-        stderr = res.stderr.lower()
-        
-        # Check for truncated/moov atom errors
-        if "moov atom not found" in stderr or "invalid data found" in stderr:
-            return False, "Corrupted file: moov atom not found (truncated download)"
-            
-        has_video = "video:" in stderr or "stream #0:0" in stderr
-        has_audio = "audio:" in stderr or "stream #0:1" in stderr or "audio only" in stderr or "sound" in stderr
-        
-        _, ext = os.path.splitext(file_path)
-        ext = ext.lower()
-        if ext == ".mp3" and not has_audio:
-            return False, "Corrupted file: no audio stream found in mp3"
-        elif ext == ".mp4" and not has_video:
-            return False, "Corrupted file: no video stream found in mp4"
-            
-        return True, None
-    except Exception as e:
-        return False, f"Integrity check failed: {e}"
-
-
-def upload_to_vercel_blob(file_path, filename):
-    import requests
-    token = os.environ.get("BLOB_READ_WRITE_TOKEN")
-    if not token:
-        return None
-        
-    from urllib.parse import quote
-    safe_filename = quote(filename)
-    url = f"https://blob.vercel-storage.com/{safe_filename}"
-    
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "x-api-version": "1",
-        "x-add-random-suffix": "1"
-    }
-    
-    _, ext = os.path.splitext(filename)
-    ext = ext.lower()
-    if ext == ".mp3":
-        headers["content-type"] = "audio/mpeg"
-    elif ext in [".mp4", ".m4v", ".mov"]:
-        headers["content-type"] = "video/mp4"
-    elif ext == ".zip":
-        headers["content-type"] = "application/zip"
-    else:
-        headers["content-type"] = "application/octet-stream"
-        
-    try:
-        print(f"Uploading {filename} to Vercel Blob...")
-        with open(file_path, "rb") as f:
-            response = requests.put(url, data=f, headers=headers, timeout=120)
-            
-        if response.status_code == 200:
-            res_data = response.json()
-            public_url = res_data.get("url")
-            print(f"Upload successful! Public URL: {public_url}")
-            return public_url
-        else:
-            print(f"Vercel Blob upload failed with status {response.status_code}: {response.text}")
-            return None
-    except Exception as e:
-        print(f"Error uploading to Vercel Blob: {e}")
-        return None
-
 
