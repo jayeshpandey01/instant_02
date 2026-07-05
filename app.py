@@ -530,7 +530,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             "progress_hooks": [progress_hook],
         }
 
-        import shutil
         has_ffmpeg = shutil.which("ffmpeg") is not None
 
         if format_choice == "audio":
@@ -545,14 +544,12 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             if has_ffmpeg:
                 ydl_opts_base["format"] = f"{format_id}+bestaudio[acodec^=mp4a]/bestaudio/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
-                ydl_opts_base["recode_video"] = "mp4"
             else:
                 ydl_opts_base["format"] = format_id
         else:
             if has_ffmpeg:
                 ydl_opts_base["format"] = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
-                ydl_opts_base["recode_video"] = "mp4"
             else:
                 ydl_opts_base["format"] = "best[ext=mp4]/best"
 
@@ -879,10 +876,23 @@ def get_info():
             best_by_height = {}
             for f in info.get("formats", []):
                 height = f.get("height")
-                if height and f.get("vcodec", "none") != "none":
+                vcodec = f.get("vcodec", "none").lower()
+                if height and vcodec != "none":
                     tbr = f.get("tbr") or 0
-                    if height not in best_by_height or tbr > (best_by_height[height].get("tbr") or 0):
+                    is_h264 = "avc" in vcodec or "h264" in vcodec
+                    
+                    if height not in best_by_height:
                         best_by_height[height] = f
+                    else:
+                        existing = best_by_height[height]
+                        existing_vcodec = existing.get("vcodec", "none").lower()
+                        existing_is_h264 = "avc" in existing_vcodec or "h264" in existing_vcodec
+                        
+                        if is_h264 and not existing_is_h264:
+                            best_by_height[height] = f
+                        elif is_h264 == existing_is_h264:
+                            if tbr > (existing.get("tbr") or 0):
+                                best_by_height[height] = f
 
             for height, f in best_by_height.items():
                 formats.append({
