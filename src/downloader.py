@@ -21,21 +21,33 @@ def ensure_ffmpeg():
     import urllib.request
     import zipfile
     
+    tmp_bin = "/tmp/bin"
+    
     system_ffmpeg = shutil.which("ffmpeg")
     if system_ffmpeg:
+        # System ffmpeg exists — also ensure ffprobe is available
+        if not shutil.which("ffprobe") and sys.platform.startswith("linux"):
+            _download_ffprobe(tmp_bin)
         return system_ffmpeg
         
     if not sys.platform.startswith("linux"):
         return None
         
-    tmp_bin = "/tmp/bin"
     ffmpeg_path = os.path.join(tmp_bin, "ffmpeg")
+    ffprobe_path = os.path.join(tmp_bin, "ffprobe")
+    
+    # Check if both already downloaded
     if os.path.exists(ffmpeg_path) and os.access(ffmpeg_path, os.X_OK):
-        if tmp_bin not in os.environ["PATH"]:
-            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ["PATH"]
+        if tmp_bin not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ.get("PATH", "")
+        # Still ensure ffprobe is there
+        if not os.path.exists(ffprobe_path) or not os.access(ffprobe_path, os.X_OK):
+            _download_ffprobe(tmp_bin)
         return ffmpeg_path
         
     os.makedirs(tmp_bin, exist_ok=True)
+    
+    # Download ffmpeg
     zip_path = os.path.join(tmp_bin, "ffmpeg.zip")
     url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-linux-64.zip"
     
@@ -47,11 +59,46 @@ def ensure_ffmpeg():
             os.remove(zip_path)
         os.chmod(ffmpeg_path, 0o755)
         
-        if tmp_bin not in os.environ["PATH"]:
-            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ["PATH"]
-        return ffmpeg_path
+        if tmp_bin not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ.get("PATH", "")
     except Exception as e:
         print(f"Error downloading ffmpeg: {e}")
+        return None
+    
+    # Download ffprobe (separate zip on ffbinaries)
+    _download_ffprobe(tmp_bin)
+    
+    return ffmpeg_path
+
+
+def _download_ffprobe(tmp_bin):
+    """Download ffprobe binary from ffbinaries (packaged separately from ffmpeg)."""
+    import urllib.request
+    import zipfile
+    
+    ffprobe_path = os.path.join(tmp_bin, "ffprobe")
+    if os.path.exists(ffprobe_path) and os.access(ffprobe_path, os.X_OK):
+        return ffprobe_path
+    
+    os.makedirs(tmp_bin, exist_ok=True)
+    zip_path = os.path.join(tmp_bin, "ffprobe.zip")
+    url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffprobe-4.4.1-linux-64.zip"
+    
+    try:
+        urllib.request.urlretrieve(url, zip_path)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(tmp_bin)
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        os.chmod(ffprobe_path, 0o755)
+        
+        if tmp_bin not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ.get("PATH", "")
+        
+        print(f"ffprobe downloaded successfully to {ffprobe_path}")
+        return ffprobe_path
+    except Exception as e:
+        print(f"Error downloading ffprobe: {e}")
         return None
 
 def get_cookie_opts(cookies_data, url=None):
@@ -238,9 +285,25 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
             except OSError:
                 pass
 
+def get_ffprobe_path():
+    """Find ffprobe binary, checking system PATH and /tmp/bin fallback."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        return ffprobe
+    # Check /tmp/bin (where ensure_ffmpeg downloads it on Linux)
+    tmp_ffprobe = "/tmp/bin/ffprobe"
+    if os.path.exists(tmp_ffprobe) and os.access(tmp_ffprobe, os.X_OK):
+        return tmp_ffprobe
+    return None
+
+
 def get_ffmpeg_location():
     ffmpeg = ensure_ffmpeg() or shutil.which("ffmpeg")
     if not ffmpeg:
+        # Direct fallback to /tmp/bin
+        tmp_ffmpeg = "/tmp/bin/ffmpeg"
+        if os.path.exists(tmp_ffmpeg) and os.access(tmp_ffmpeg, os.X_OK):
+            return "/tmp/bin"
         return None
     return os.path.dirname(os.path.abspath(ffmpeg))
 
@@ -338,7 +401,7 @@ def build_video_format_string(format_id=None, has_ffmpeg=True, height=None, info
 
 
 def _ffprobe_streams(input_path, stream_type):
-    ffprobe = shutil.which("ffprobe")
+    ffprobe = get_ffprobe_path()
     if not ffprobe or not os.path.isfile(input_path):
         return None
 
@@ -368,7 +431,9 @@ def _ffprobe_streams(input_path, stream_type):
 def has_audio_stream(input_path):
     result = _ffprobe_streams(input_path, "a")
     if result is None:
-        return False
+        # ffprobe unavailable — assume audio exists (optimistic) to avoid
+        # discarding valid files or triggering false "no audio" errors
+        return True
     return result
 
 
@@ -454,9 +519,16 @@ def manual_merge_video_audio(video_path, audio_path):
             check=True,
         )
         del result
-        if os.path.exists(merged_path) and os.path.getsize(merged_path) > 0 and has_audio_stream(merged_path):
-            return merged_path
-    except Exception:
+        if os.path.exists(merged_path) and os.path.getsize(merged_path) > 0:
+            # Accept merge result if ffmpeg succeeded. If ffprobe is available,
+            # verify audio; if not, trust the merge (ffmpeg exit code 0 = success).
+            audio_check = _ffprobe_streams(merged_path, "a")
+            if audio_check is None or audio_check:
+                return merged_path
+            # ffprobe positively says no audio — discard
+            print(f"Merge produced file without audio: {merged_path}")
+    except Exception as e:
+        print(f"FFmpeg merge failed: {e}")
         if os.path.exists(merged_path):
             try:
                 os.remove(merged_path)
@@ -537,6 +609,13 @@ def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, 
     if files and all(has_audio_stream(path) for path in files):
         return info, files, None
 
+    # If we have files but ffprobe is unavailable, don't discard them — 
+    # has_audio_stream already returns True optimistically in that case,
+    # so we only reach here when ffprobe positively confirmed no audio.
+    # Still, only retry if we actually got files without audio.
+    if not files:
+        return info, [], "Download completed but no file was found"
+
     for stale in list_job_media_files(job_id, "video"):
         try:
             os.remove(stale)
@@ -554,8 +633,13 @@ def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, 
     if files and all(has_audio_stream(path) for path in files):
         return info_retry or info, files, None
 
-    if files and not all(has_audio_stream(path) for path in files):
-        return info_retry or info, files, "Download completed but the video has no audio track"
+    # Only report "no audio" if ffprobe positively confirmed it (not when ffprobe is missing)
+    if files:
+        ffprobe_available = get_ffprobe_path() is not None
+        if ffprobe_available and not all(has_audio_stream(path) for path in files):
+            return info_retry or info, files, "Download completed but the video has no audio track"
+        # ffprobe unavailable or check passed — return files as-is
+        return info_retry or info, files, None
 
     return info_retry or info, files, None
 
