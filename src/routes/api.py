@@ -115,16 +115,22 @@ def get_info():
             uploader = info.get("uploader", "")
             duration = info.get("duration")
             
-            # Build quality options — prefer progressive (video+audio) formats per resolution
+            # Build quality options — prefer progressive Instagram formats that include audio
             best_by_height = {}
             for f in info.get("formats", []):
                 height = f.get("height")
                 vcodec = f.get("vcodec", "none").lower()
                 acodec = f.get("acodec", "none").lower()
+                format_id = str(f.get("format_id") or "")
                 if height and vcodec != "none":
+                    # Hide DASH video-only rows; backend resolves dash+a audio pairs on download
+                    if acodec == "none" and format_id.startswith("dash-") and format_id.endswith("v"):
+                        continue
+
                     tbr = f.get("tbr") or 0
                     is_h264 = "avc" in vcodec or "h264" in vcodec
                     has_audio = acodec != "none"
+                    is_progressive = bool(re.search(r"v-\d+$", format_id))
 
                     if height not in best_by_height:
                         best_by_height[height] = f
@@ -133,15 +139,19 @@ def get_info():
                         existing_vcodec = existing.get("vcodec", "none").lower()
                         existing_is_h264 = "avc" in existing_vcodec or "h264" in existing_vcodec
                         existing_has_audio = existing.get("acodec", "none").lower() != "none"
+                        existing_is_progressive = bool(re.search(r"v-\d+$", str(existing.get("format_id") or "")))
 
-                        if has_audio and not existing_has_audio:
+                        if is_progressive and not existing_is_progressive:
                             best_by_height[height] = f
-                        elif has_audio == existing_has_audio:
-                            if is_h264 and not existing_is_h264:
+                        elif is_progressive == existing_is_progressive:
+                            if has_audio and not existing_has_audio:
                                 best_by_height[height] = f
-                            elif is_h264 == existing_is_h264:
-                                if tbr > (existing.get("tbr") or 0):
+                            elif has_audio == existing_has_audio:
+                                if is_h264 and not existing_is_h264:
                                     best_by_height[height] = f
+                                elif is_h264 == existing_is_h264:
+                                    if tbr > (existing.get("tbr") or 0):
+                                        best_by_height[height] = f
 
             for height, f in best_by_height.items():
                 formats.append({

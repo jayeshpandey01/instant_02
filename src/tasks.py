@@ -8,8 +8,10 @@ from src.downloader import (
     run_ytdlp_with_fallback,
     convert_to_ios_compatible_mp4,
     ensure_ffmpeg,
-    build_video_format_string,
-    has_audio_stream,
+    resolve_instagram_video_format,
+    get_format_height,
+    prefetch_video_info,
+    ensure_video_has_audio,
     collect_download_files,
 )
 
@@ -281,6 +283,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             job["filename"] = f"{(title[:20].strip() or os.path.basename(chosen))}{ext}"
             return
             
+        meta = None
         if format_choice == "audio":
 
             ydl_opts_base["format"] = "bestaudio/best"
@@ -290,12 +293,26 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                     "preferredcodec": "mp3",
                     "preferredquality": "192",
                 }]
+            info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
         else:
-            ydl_opts_base["format"] = build_video_format_string(format_id, has_ffmpeg)
+            meta, used_cookie, fallback, err = prefetch_video_info(url, cookies_data)
+            if err:
+                job["status"] = "error"
+                job["error"] = err.split("\n")[-1]
+                return
+            if fallback:
+                job["fallback_used"] = used_cookie
+
+            selected_height = get_format_height(meta, format_id)
+            ydl_opts_base["format"] = resolve_instagram_video_format(
+                meta,
+                format_id=format_id,
+                height=selected_height,
+            )
             if has_ffmpeg:
                 ydl_opts_base["merge_output_format"] = "mp4"
 
-        info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
+            info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
 
         if err:
             job["status"] = "error"
@@ -305,31 +322,22 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         if fallback:
             job["fallback_used"] = used_cookie
 
-        files = collect_download_files(job_id, format_choice)
-        if (
-            format_choice not in ("audio", "image")
-            and files
-            and len(files) == 1
-            and not has_audio_stream(files[0])
-        ):
-            for stale in glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*")):
-                try:
-                    if os.path.isfile(stale):
-                        os.remove(stale)
-                except OSError:
-                    pass
-
-            retry_opts = dict(ydl_opts_base)
-            retry_opts["format"] = build_video_format_string(None, has_ffmpeg)
-            info, used_cookie, fallback, err = run_ytdlp_with_fallback(
-                retry_opts, url, cookies_data, download=True
+        if format_choice not in ("audio", "image"):
+            info, files, audio_err = ensure_video_has_audio(
+                job_id,
+                url,
+                cookies_data,
+                ydl_opts_base,
+                info=info or meta,
+                format_id=format_id,
+                height=get_format_height(info or meta, format_id),
             )
-            if err:
+            if audio_err:
                 job["status"] = "error"
-                job["error"] = err.split("\n")[-1]
+                job["error"] = audio_err.split("\n")[-1]
                 return
-            if fallback:
-                job["fallback_used"] = used_cookie
+        else:
+            files = collect_download_files(job_id, format_choice)
 
         # ---------------------------------------------------------
         # SUPPLEMENTAL IMAGE DOWNLOAD FOR MIXED CAROUSELS
@@ -358,7 +366,8 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                             except Exception:
                                 pass
 
-        files = collect_download_files(job_id, format_choice)
+        if format_choice in ("audio", "image"):
+            files = collect_download_files(job_id, format_choice)
         if not files:
             job["status"] = "error"
             job["error"] = "Download completed but no file was found"
