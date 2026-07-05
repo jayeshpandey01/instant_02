@@ -5,13 +5,141 @@ import json
 import tempfile
 import threading
 import time
+import sqlite3
+import hmac
+import hashlib
+import base64
 from urllib.parse import urlparse
 from flask import Flask, request, jsonify, send_file, render_template
 import yt_dlp
 
+def load_env():
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    val = val.strip().strip("'").strip('"')
+                    os.environ[key.strip()] = val
+
+load_env()
+
 app = Flask(__name__)
+
+# SQLite Database Helper Functions
+def get_db_connection():
+    db_path = os.environ.get("DATABASE_PATH", "blog.db")
+    if not os.path.isabs(db_path):
+        db_path = os.path.join(os.path.dirname(__file__), db_path)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS blogs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slug TEXT UNIQUE NOT NULL,
+            title TEXT NOT NULL,
+            category TEXT,
+            date TEXT,
+            excerpt TEXT,
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    
+    cursor.execute("SELECT COUNT(*) FROM blogs")
+    if cursor.fetchone()[0] == 0:
+        default_posts = [
+            {
+                "slug": "how-reclip-makes-downloads-easy",
+                "title": "How Reclip Makes Downloads Effortless",
+                "category": "Product",
+                "date": "June 25, 2026",
+                "excerpt": "A closer look at the small design choices that make every download feel calm, clear, and fast.",
+                "content": json.dumps([
+                    "Reclip was built to turn a complicated download flow into something that feels almost effortless. Instead of scattering options across several steps, the experience stays focused on one simple goal: getting your file ready without friction.",
+                    "The secret is in the flow. You paste a link, choose a format, and the rest of the work happens smoothly in the background. That keeps the experience calm for first-time users and familiar for people who come back often.",
+                    "Small details matter here too. Clear status feedback, polished buttons, and thoughtful copy all help create a sense of confidence while the download is being prepared."
+                ])
+            },
+            {
+                "slug": "why-creators-love-simple-media-tools",
+                "title": "Why Creators Love Simple Media Tools",
+                "category": "Creator Tips",
+                "date": "June 20, 2026",
+                "excerpt": "Creators often need quick access to media, and a simple workflow can save time and energy.",
+                "content": json.dumps([
+                    "When creators work across different platforms, speed matters. They often need to save a clip, grab an audio file, or revisit a piece of media quickly without losing momentum.",
+                    "That is where simple tools shine. A polished experience helps creators keep moving instead of getting stuck in a maze of menus, redirects, or confusing steps.",
+                    "Reclip focuses on that exact balance: minimal friction, clear choices, and a smooth finish so the work stays creative rather than technical."
+                ])
+            },
+            {
+                "slug": "best-practices-for-video-and-audio-downloads",
+                "title": "Best Practices for Video and Audio Downloads",
+                "category": "How-To",
+                "date": "June 15, 2026",
+                "excerpt": "A practical checklist for choosing the right format and quality before you hit download.",
+                "content": json.dumps([
+                    "Choosing between video and audio often depends on the purpose of the file. If you need a quick preview, a lower-quality option may be enough. If you want a more polished result, higher-quality settings are a better fit.",
+                    "Audio-only downloads are ideal for podcasts, playlists, or content that will be reused in editing workflows. Video downloads are better when visual detail matters most.",
+                    "The best approach is to match the format to the use case and keep the download experience simple enough that the choice feels easy instead of overwhelming."
+                ])
+            }
+        ]
+        for post in default_posts:
+            cursor.execute(
+                "INSERT INTO blogs (slug, title, category, date, excerpt, content) VALUES (?, ?, ?, ?, ?, ?)",
+                (post["slug"], post["title"], post["category"], post["date"], post["excerpt"], post["content"])
+            )
+        conn.commit()
+    conn.close()
+
+init_db()
+
+# Cryptographically Secure Admin Auth Session Token Generator & Validator
+def generate_auth_token(email):
+    expiry = int(time.time()) + (7 * 24 * 3600)  # 7 days
+    payload = f"{email}:{expiry}"
+    secret = os.environ.get("JWT_SECRET", "super_secret_key_clauster_blog").encode()
+    signature = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()
+    token_str = f"{payload}:{signature}"
+    return base64.b64encode(token_str.encode()).decode()
+
+def verify_auth_token(token):
+    if not token:
+        return False
+    try:
+        decoded = base64.b64decode(token.encode()).decode()
+        parts = decoded.split(":")
+        if len(parts) != 3:
+            return False
+        email, expiry, signature = parts
+        if int(expiry) < time.time():
+            return False
+        payload = f"{email}:{expiry}"
+        secret = os.environ.get("JWT_SECRET", "super_secret_key_clauster_blog").encode()
+        expected = hmac.new(secret, payload.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(signature, expected):
+            admin_email = os.environ.get("ADMIN_EMAIL", "Instantreelsdownload@gmail.com")
+            return email == admin_email
+    except Exception:
+        return False
+    return False
+
 DOWNLOAD_DIR = "/tmp/downloads" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "downloads")
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
 
 jobs = {}
 
@@ -305,8 +433,175 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
 
 
 @app.route("/")
-def index():
+@app.route("/about")
+@app.route("/contact")
+@app.route("/blog")
+@app.route("/blog/<path:slug>")
+@app.route("/admin")
+def index(slug=None):
     return render_template("index.html")
+
+# Admin Login API
+@app.route("/api/auth/login", methods=["POST"])
+def admin_login():
+    data = request.json or {}
+    email = data.get("email")
+    password = data.get("password")
+    
+    admin_email = os.environ.get("ADMIN_EMAIL", "Instantreelsdownload@gmail.com")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "@Instantreelsdownload9267")
+    
+    if email == admin_email and password == admin_password:
+        token = generate_auth_token(email)
+        return jsonify({"token": token, "email": email})
+    
+    return jsonify({"error": "Invalid email or password"}), 401
+
+# Get All Blogs API
+@app.route("/api/blogs", methods=["GET"])
+def get_blogs():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM blogs ORDER BY id DESC")
+        rows = cursor.fetchall()
+        blogs = []
+        for row in rows:
+            blogs.append({
+                "id": row["id"],
+                "slug": row["slug"],
+                "title": row["title"],
+                "category": row["category"],
+                "date": row["date"],
+                "excerpt": row["excerpt"],
+                "content": json.loads(row["content"]) if row["content"] else []
+            })
+        conn.close()
+        return jsonify(blogs)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Get Single Blog by Slug API
+@app.route("/api/blogs/<slug>", methods=["GET"])
+def get_blog_single(slug):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM blogs WHERE slug = ?", (slug,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return jsonify({
+                "id": row["id"],
+                "slug": row["slug"],
+                "title": row["title"],
+                "category": row["category"],
+                "date": row["date"],
+                "excerpt": row["excerpt"],
+                "content": json.loads(row["content"]) if row["content"] else []
+            })
+        return jsonify({"error": "Blog post not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Create Blog API (Admin Only)
+@app.route("/api/blogs", methods=["POST"])
+def create_blog():
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    if not verify_auth_token(token):
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    data = request.json or {}
+    title = data.get("title")
+    slug = data.get("slug")
+    category = data.get("category", "General")
+    date = data.get("date") or time.strftime("%B %d, %Y")
+    content = data.get("content")
+    
+    if not title or not slug or not content:
+        return jsonify({"error": "Title, slug, and content are required"}), 400
+        
+    excerpt = data.get("excerpt") or (content[0][:150] + "..." if content else "")
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO blogs (slug, title, category, date, excerpt, content) VALUES (?, ?, ?, ?, ?, ?)",
+            (slug, title, category, date, excerpt, json.dumps(content))
+        )
+        conn.commit()
+        new_id = cursor.lastrowid
+        conn.close()
+        return jsonify({"id": new_id, "slug": slug, "title": title}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "A blog post with this slug already exists"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Update Blog API (Admin Only)
+@app.route("/api/blogs/<int:blog_id>", methods=["PUT"])
+def update_blog(blog_id):
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    if not verify_auth_token(token):
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    data = request.json or {}
+    title = data.get("title")
+    slug = data.get("slug")
+    category = data.get("category", "General")
+    date = data.get("date") or time.strftime("%B %d, %Y")
+    content = data.get("content")
+    
+    if not title or not slug or not content:
+        return jsonify({"error": "Title, slug, and content are required"}), 400
+        
+    excerpt = data.get("excerpt") or (content[0][:150] + "..." if content else "")
+    
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE blogs SET slug = ?, title = ?, category = ?, date = ?, excerpt = ?, content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (slug, title, category, date, excerpt, json.dumps(content), blog_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Blog post updated successfully"})
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "A blog post with this slug already exists"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Delete Blog API (Admin Only)
+@app.route("/api/blogs/<int:blog_id>", methods=["DELETE"])
+def delete_blog(blog_id):
+    auth_header = request.headers.get("Authorization")
+    token = None
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+    
+    if not verify_auth_token(token):
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM blogs WHERE id = ?", (blog_id,))
+        conn.commit()
+        conn.close()
+        return jsonify({"message": "Blog post deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 @app.route("/api/cookie-files")

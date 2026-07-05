@@ -421,6 +421,260 @@
       border-color: var(--accent);
     }
 
+    /* Navbar styles */
+    .navbar {
+      background: rgba(244, 241, 235, 0.85);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1.5px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      width: 100%;
+    }
+    .nav-container {
+      max-width: 620px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .nav-brand {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1.6rem;
+      font-weight: 500;
+      color: var(--fg);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+    }
+    .nav-link {
+      font-size: 0.76rem;
+      color: var(--muted);
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      transition: color 0.2s;
+      font-weight: 500;
+    }
+    .nav-link:hover, .nav-link.active {
+      color: var(--fg);
+    }
+
+    /* Content styling */
+    .content-text p {
+      margin-bottom: 16px;
+      line-height: 1.6;
+      font-size: 0.88rem;
+    }
+    .contact-form {
+      margin-top: 20px;
+    }
+    .contact-form input, .form-input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--fg);
+      font-family: inherit;
+      font-size: 0.82rem;
+      outline: none;
+      margin-bottom: 14px;
+      transition: border-color 0.25s;
+    }
+    .contact-form input:focus, .form-input:focus {
+      border-color: var(--accent);
+    }
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.68rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    /* Blog styling */
+    .blog-grid {
+      display: grid;
+      gap: 16px;
+    }
+    .blog-card {
+      border: 1.5px solid var(--card-border);
+      border-radius: var(--radius);
+      background: var(--card);
+      padding: 20px;
+      cursor: pointer;
+      transition: border-color 0.25s, transform 0.2s;
+    }
+    .blog-card:hover {
+      border-color: var(--fg);
+      transform: translateY(-2px);
+    }
+    .blog-card-meta {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+    .blog-card-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1.8rem;
+      line-height: 1.2;
+      color: var(--fg);
+      margin-bottom: 10px;
+    }
+    .blog-card-excerpt {
+      font-size: 0.82rem;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+
+    /* Blog detail styling */
+    .back-link-btn {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 0.74rem;
+      color: var(--accent);
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 24px;
+      transition: color 0.2s;
+    }
+    .back-link-btn:hover {
+      color: var(--accent-hover);
+    }
+    .blog-detail-header {
+      margin-bottom: 28px;
+      border-bottom: 1.5px solid var(--card-border);
+      padding-bottom: 20px;
+    }
+    .blog-detail-category {
+      font-size: 0.7rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 500;
+    }
+    .blog-detail-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 3.2rem;
+      line-height: 1.1;
+      margin-top: 8px;
+      margin-bottom: 12px;
+      color: var(--fg);
+    }
+    .blog-detail-date {
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .blog-detail-body p {
+      font-size: 0.94rem;
+      line-height: 1.6;
+      color: var(--fg);
+      margin-bottom: 20px;
+    }
+
+    /* Admin Dash & Modal */
+    .admin-blog-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px;
+      border: 1.5px solid var(--card-border);
+      border-radius: 10px;
+      background: var(--card);
+      margin-bottom: 10px;
+    }
+    .admin-blog-info {
+      min-width: 0;
+      flex: 1;
+      margin-right: 16px;
+    }
+    .admin-blog-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1.4rem;
+      color: var(--fg);
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .admin-blog-meta {
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .admin-blog-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(26, 26, 24, 0.4);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      animation: fadeIn 0.25s ease-out;
+    }
+    .modal-card {
+      background: var(--bg);
+      border: 1.5px solid var(--card-border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 420px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+      position: relative;
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .modal-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 2.2rem;
+      font-weight: 400;
+    }
+    .modal-title em {
+      font-style: italic;
+      color: var(--accent);
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .modal-close:hover {
+      color: var(--fg);
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
     /* Mobile */
     @media (max-width: 500px) {
       .brand h1 { font-size: 3rem; }
@@ -437,69 +691,187 @@
     }
   </style>
 </head>
+
 <body>
-  <div class="page">
-    <div class="brand">
-      <h1>Instant <em>Download</em></h1>
-      <p>Free media downloader</p>
-    </div>
-
-    <textarea id="urls" placeholder="Paste one or more URLs..." rows="2"></textarea>
-    <p class="hint">Multiple links? Separate with spaces, commas, or newlines.</p>
-
-    <div class="controls">
-      <div class="pill-group">
-        <button class="pill active" data-format="video" onclick="setFormat(this)">MP4</button>
-        <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="/" class="nav-brand" onclick="navigate(event, '/')">Instant Downloader</a>
+      <div class="nav-links">
+        <a href="/" class="nav-link active" id="link-home" onclick="navigate(event, '/')">Home</a>
+        <a href="/about" class="nav-link" id="link-about" onclick="navigate(event, '/about')">About</a>
+        <a href="/contact" class="nav-link" id="link-contact" onclick="navigate(event, '/contact')">Contact</a>
+        <a href="/blog" class="nav-link" id="link-blog" onclick="navigate(event, '/blog')">Blog</a>
       </div>
-      <button class="settings-toggle-btn" id="settingsToggleBtn" onclick="toggleSettings()" title="Settings">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
-      <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
     </div>
+  </nav>
 
-    <!-- Settings Panel -->
-    <div class="settings-panel" id="settingsPanel" style="display: none;">
-      <div class="settings-group">
-        <label class="settings-label">Cookies Mode</label>
+  <div class="page">
+    <!-- Home / Downloader Page -->
+    <div id="section-home" class="tab-section">
+      <div class="brand">
+        <h1>Instant <em>Download</em></h1>
+        <p>Free media downloader</p>
+      </div>
+
+      <textarea id="urls" placeholder="Paste one or more URLs..." rows="2"></textarea>
+      <p class="hint">Multiple links? Separate with spaces, commas, or newlines.</p>
+
+      <div class="controls">
         <div class="pill-group">
-          <button class="pill active" id="cookie-none-btn" onclick="setCookieMode('none')">None</button>
-          <button class="pill" id="cookie-browser-btn" onclick="setCookieMode('browser')">Browser</button>
-          <button class="pill" id="cookie-local_file-btn" onclick="setCookieMode('local_file')">Local File</button>
-          <button class="pill" id="cookie-text-btn" onclick="setCookieMode('text')">Pasted txt</button>
+          <button class="pill active" data-format="video" onclick="setFormat(this)">MP4</button>
+          <button class="pill" data-format="audio" onclick="setFormat(this)">MP3</button>
+        </div>
+        <button class="settings-toggle-btn" id="settingsToggleBtn" onclick="toggleSettings()" title="Settings">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button class="fetch-btn" id="goBtn" onclick="go()">Fetch</button>
+      </div>
+
+      <!-- Settings Panel -->
+      <div class="settings-panel" id="settingsPanel" style="display: none;">
+        <div class="settings-group">
+          <label class="settings-label">Cookies Mode</label>
+          <div class="pill-group">
+            <button class="pill active" id="cookie-none-btn" onclick="setCookieMode('none')">None</button>
+            <button class="pill" id="cookie-browser-btn" onclick="setCookieMode('browser')">Browser</button>
+            <button class="pill" id="cookie-local_file-btn" onclick="setCookieMode('local_file')">Local File</button>
+            <button class="pill" id="cookie-text-btn" onclick="setCookieMode('text')">Pasted txt</button>
+          </div>
+        </div>
+
+        <div class="settings-group" id="cookie-browser-group" style="display: none;">
+          <label class="settings-label">Select Browser</label>
+          <select id="cookie-browser-select" class="settings-select">
+            <option value="chrome">Google Chrome</option>
+            <option value="firefox">Mozilla Firefox</option>
+            <option value="edge">Microsoft Edge</option>
+            <option value="brave">Brave</option>
+            <option value="safari">Apple Safari</option>
+            <option value="opera">Opera</option>
+            <option value="vivaldi">Vivaldi</option>
+          </select>
+          <p class="hint" style="margin-top: 6px; margin-bottom: 0;">yt-dlp will read active login cookies from this browser.</p>
+        </div>
+
+        <div class="settings-group" id="cookie-local_file-group" style="display: none;">
+          <label class="settings-label">Select Local Cookie File</label>
+          <select id="cookie-local_file-select" class="settings-select">
+            <option value="">Loading files...</option>
+          </select>
+          <p class="hint" style="margin-top: 6px; margin-bottom: 0;">Select a cookie file (e.g. <code>www.instagram.com_cookies.txt</code>) from the project directory.</p>
+        </div>
+
+        <div class="settings-group" id="cookie-text-group" style="display: none;">
+          <label class="settings-label">Paste cookies.txt or Cookie Header</label>
+          <textarea id="cookie-text-val" placeholder="# Netscape HTTP Cookie File OR mid=...; ig_did=...; sessionid=..." rows="5" style="min-height: 120px; font-family: monospace; font-size: 0.75rem; margin-bottom: 4px;"></textarea>
+          <p class="hint" style="margin-bottom: 0;">Paste the content of an exported Netscape cookie file, OR paste the raw 'Cookie' header string from your browser's Developer Tools Network tab.</p>
         </div>
       </div>
 
-      <div class="settings-group" id="cookie-browser-group" style="display: none;">
-        <label class="settings-label">Select Browser</label>
-        <select id="cookie-browser-select" class="settings-select">
-          <option value="chrome">Google Chrome</option>
-          <option value="firefox">Mozilla Firefox</option>
-          <option value="edge">Microsoft Edge</option>
-          <option value="brave">Brave</option>
-          <option value="safari">Apple Safari</option>
-          <option value="opera">Opera</option>
-          <option value="vivaldi">Vivaldi</option>
-        </select>
-        <p class="hint" style="margin-top: 6px; margin-bottom: 0;">yt-dlp will read active login cookies from this browser.</p>
-      </div>
+      <div id="cards" class="cards"></div>
+    </div>
 
-      <div class="settings-group" id="cookie-local_file-group" style="display: none;">
-        <label class="settings-label">Select Local Cookie File</label>
-        <select id="cookie-local_file-select" class="settings-select">
-          <option value="">Loading files...</option>
-        </select>
-        <p class="hint" style="margin-top: 6px; margin-bottom: 0;">Select a cookie file (e.g. <code>www.instagram.com_cookies.txt</code>) from the project directory.</p>
+    <!-- About Page -->
+    <div id="section-about" class="tab-section" style="display: none;">
+      <div class="brand">
+        <h1>About <em>Instant Downloader</em></h1>
+        <p>A simpler way to save your media</p>
       </div>
-
-      <div class="settings-group" id="cookie-text-group" style="display: none;">
-        <label class="settings-label">Paste cookies.txt or Cookie Header</label>
-        <textarea id="cookie-text-val" placeholder="# Netscape HTTP Cookie File OR mid=...; ig_did=...; sessionid=..." rows="5" style="min-height: 120px; font-family: monospace; font-size: 0.75rem; margin-bottom: 4px;"></textarea>
-        <p class="hint" style="margin-bottom: 0;">Paste the content of an exported Netscape cookie file, OR paste the raw 'Cookie' header string from your browser's Developer Tools Network tab.</p>
+      <div class="content-text">
+        <p>Instant Downloader was created out of a desire for a clean, calm, and distraction-free utility. Traditional downloaders are often cluttered, noisy, and confusing. We believe that tools should be helpful, beautiful, and respect your attention.</p>
+        <p>Under the hood, Instant Downloader leverages state-of-the-art parsing technologies to fetch high-quality audio and video assets instantly. Your files are processed securely and directly without third-party advertisements or trackers.</p>
       </div>
     </div>
 
-    <div id="cards" class="cards"></div>
+    <!-- Contact Page -->
+    <div id="section-contact" class="tab-section" style="display: none;">
+      <div class="brand">
+        <h1>Say <em>Hello</em></h1>
+        <p>We'd love to hear from you</p>
+      </div>
+      <div class="content-text">
+        <p>Have questions, feedback, or need support? Drop us a line and we'll get back to you as soon as possible.</p>
+        <form class="contact-form" onsubmit="event.preventDefault(); alert('Message sent successfully!'); this.reset();">
+          <input type="text" placeholder="YOUR NAME" required>
+          <input type="email" placeholder="EMAIL ADDRESS" required>
+          <textarea placeholder="YOUR MESSAGE" rows="4" required></textarea>
+          <button type="submit" class="fetch-btn" style="width: 100%;">Send Message</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Blog Page (Listing) -->
+    <div id="section-blog" class="tab-section" style="display: none;">
+      <div class="brand">
+        <h1>Our <em>Blog</em></h1>
+        <p>Articles, updates, and design insights</p>
+      </div>
+      <div id="blog-posts-container" class="blog-grid">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+
+    <!-- Blog Detail Page -->
+    <div id="section-blog-detail" class="tab-section" style="display: none;">
+      <button class="back-link-btn" onclick="navigate(event, '/blog')">← Back to Blog</button>
+      <div class="blog-detail-header">
+        <span class="blog-detail-category" id="detail-category">Category</span>
+        <h1 id="detail-title" class="blog-detail-title">Blog Title</h1>
+        <span class="blog-detail-date" id="detail-date">June 25, 2026</span>
+      </div>
+      <div id="detail-content" class="blog-detail-body">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
+
+    <!-- Admin Panel Page -->
+    <div id="section-admin" class="tab-section" style="display: none;">
+      <div class="brand" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+        <div>
+          <h1>Admin <em>Dashboard</em></h1>
+          <p>Blog Post Management</p>
+        </div>
+        <button class="pill active" onclick="logoutAdmin()">Sign Out</button>
+      </div>
+      
+      <div id="admin-actions-bar" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+        <button class="fetch-btn" onclick="showNewPostForm()">+ Create New Post</button>
+      </div>
+      
+      <!-- Editor Form (Hidden by default) -->
+      <div id="postEditorContainer" class="settings-panel" style="display: none; margin-bottom: 24px; animation: none;">
+        <h3 id="editorFormTitle" style="font-family: 'Instrument Serif', serif; font-size: 1.8rem; margin-bottom: 16px;">Create Blog Post</h3>
+        <form id="editorForm" onsubmit="saveBlogPost(event)">
+          <input type="hidden" id="editorPostId">
+          <div class="form-group">
+            <label class="form-label">Title</label>
+            <input type="text" id="editorTitle" class="form-input" required oninput="autoGenSlug()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Slug</label>
+            <input type="text" id="editorSlug" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <input type="text" id="editorCategory" class="form-input" required placeholder="Product, How-To, etc.">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Content (Separate paragraphs with double newlines)</label>
+            <textarea id="editorContent" class="form-input" rows="8" required style="min-height: 150px; font-family: inherit; font-size: 0.82rem;"></textarea>
+          </div>
+          <div id="editorError" class="error-text" style="display: none; margin-bottom: 12px; font-size: 0.72rem; color: var(--error);"></div>
+          <div style="display: flex; gap: 10px;">
+            <button type="submit" class="fetch-btn" style="flex: 1;">Save Post</button>
+            <button type="button" class="pill" onclick="cancelEditor()" style="padding: 10px 20px;">Cancel</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Admin Blog List -->
+      <div id="admin-blog-list">
+        <!-- Populated dynamically -->
+      </div>
+    </div>
 
     <div class="footer">
       YouTube &middot; TikTok &middot; Instagram &middot; Twitter/X &middot; Reddit &middot; Facebook<br>
@@ -508,10 +880,355 @@
     </div>
   </div>
 
+  <!-- Admin Login Modal -->
+  <div id="loginModal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 class="modal-title">Admin <em>Login</em></h2>
+        <button class="modal-close" onclick="closeLoginModal()">&times;</button>
+      </div>
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label class="form-label">GMAIL ADDRESS</label>
+          <input type="email" id="loginEmail" class="form-input" required placeholder="admin login only">
+        </div>
+        <div class="form-group">
+          <label class="form-label">PASSWORD</label>
+          <input type="password" id="loginPassword" class="form-input" required>
+        </div>
+        <div id="loginError" class="error-text" style="display: none; margin-bottom: 12px; font-size: 0.72rem; color: var(--error);"></div>
+        <button type="submit" class="fetch-btn" style="width: 100%;">Sign In</button>
+      </form>
+    </div>
+  </div>
+
   <script>
     let currentFormat = 'video';
     let cardData = [];
     let cookieMode = 'none';
+
+    // Page routing & navigation
+    function showTab(tabName) {
+      cancelEditor();
+
+      document.querySelectorAll('.tab-section').forEach(sec => {
+        sec.style.display = 'none';
+      });
+      document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+      });
+
+      const activeSec = document.getElementById(`section-${tabName}`);
+      if (activeSec) {
+        activeSec.style.display = 'block';
+      }
+
+      const activeLink = document.getElementById(`link-${tabName}`);
+      if (activeLink) {
+        activeLink.classList.add('active');
+      }
+
+      if (tabName === 'blog') {
+        loadBlogPosts();
+      } else if (tabName === 'admin') {
+        const token = localStorage.getItem('admin_token');
+        if (!token) {
+          showTab('home');
+          showLoginModal();
+        } else {
+          loadAdminBlogs();
+        }
+      }
+    }
+
+    function navigate(event, path) {
+      if (event) event.preventDefault();
+      window.history.pushState({}, '', path);
+      handleRoute();
+    }
+
+    function handleRoute() {
+      const path = window.location.pathname;
+      
+      // Close the login modal if navigating to a non-admin page
+      if (path !== '/admin') {
+        document.getElementById('loginModal').style.display = 'none';
+      }
+
+      if (path === '/about') {
+        showTab('about');
+      } else if (path === '/contact') {
+        showTab('contact');
+      } else if (path === '/blog') {
+        showTab('blog');
+      } else if (path.startsWith('/blog/')) {
+        const slug = path.split('/blog/')[1];
+        showTab('blog-detail');
+        loadSinglePost(slug);
+      } else if (path === '/admin') {
+        const token = localStorage.getItem('admin_token');
+        if (!token) {
+          showTab('home');
+          showLoginModal();
+        } else {
+          showTab('admin');
+        }
+      } else {
+        showTab('home');
+      }
+    }
+
+    window.onpopstate = handleRoute;
+
+    // Login modal & Authentication
+    function showLoginModal() {
+      document.getElementById('loginModal').style.display = 'flex';
+      document.getElementById('loginError').style.display = 'none';
+      document.getElementById('loginForm').reset();
+    }
+
+    function closeLoginModal() {
+      document.getElementById('loginModal').style.display = 'none';
+      if (window.location.pathname === '/admin' && !localStorage.getItem('admin_token')) {
+        window.history.pushState({}, '', '/');
+        showTab('home');
+      }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      const errEl = document.getElementById('loginError');
+      errEl.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          localStorage.setItem('admin_token', data.token);
+          localStorage.setItem('admin_email', data.email);
+          closeLoginModal();
+          window.history.pushState({}, '', '/admin');
+          showTab('admin');
+        } else {
+          errEl.textContent = data.error || 'Invalid credentials';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Server connection failed';
+        errEl.style.display = 'block';
+      }
+    }
+
+    function logoutAdmin() {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_email');
+      window.history.pushState({}, '', '/');
+      showTab('home');
+    }
+
+    // Blog fetchers
+    async function loadBlogPosts() {
+      const container = document.getElementById('blog-posts-container');
+      container.innerHTML = '<div style="font-size:0.78rem;color:var(--muted)">Loading articles...</div>';
+      try {
+        const res = await fetch('/api/blogs');
+        const posts = await res.json();
+        if (!posts || posts.length === 0) {
+          container.innerHTML = '<div style="font-size:0.78rem;color:var(--muted)">No articles posted yet.</div>';
+          return;
+        }
+        container.innerHTML = posts.map(post => `
+          <div class="blog-card" onclick="navigate(event, '/blog/${post.slug}')">
+            <div class="blog-card-meta">${esc(post.category)} · ${esc(post.date)}</div>
+            <h2 class="blog-card-title">${esc(post.title)}</h2>
+            <p class="blog-card-excerpt">${esc(post.excerpt)}</p>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerHTML = '<div style="font-size:0.78rem;color:var(--error)">Failed to load blog posts.</div>';
+      }
+    }
+
+    async function loadSinglePost(slug) {
+      const titleEl = document.getElementById('detail-title');
+      const categoryEl = document.getElementById('detail-category');
+      const dateEl = document.getElementById('detail-date');
+      const contentEl = document.getElementById('detail-content');
+
+      contentEl.innerHTML = '<div style="font-size:0.78rem;color:var(--muted)">Loading article...</div>';
+      titleEl.textContent = 'Loading...';
+      categoryEl.textContent = '';
+      dateEl.textContent = '';
+
+      try {
+        const res = await fetch(`/api/blogs/${slug}`);
+        const post = await res.json();
+        if (res.ok) {
+          titleEl.textContent = post.title;
+          categoryEl.textContent = post.category;
+          dateEl.textContent = post.date;
+          
+          if (Array.isArray(post.content)) {
+            contentEl.innerHTML = post.content.map(p => `<p>${esc(p)}</p>`).join('');
+          } else {
+            contentEl.innerHTML = `<p>${esc(post.content)}</p>`;
+          }
+        } else {
+          titleEl.textContent = 'Post Not Found';
+          contentEl.innerHTML = `<p style="color:var(--error)">${esc(post.error || 'The requested article could not be found.')}</p>`;
+        }
+      } catch (err) {
+        titleEl.textContent = 'Error';
+        contentEl.innerHTML = '<p style="color:var(--error)">Failed to load the article from server.</p>';
+      }
+    }
+
+    // Blog Admin CRUD Operations
+    async function loadAdminBlogs() {
+      const container = document.getElementById('admin-blog-list');
+      container.innerHTML = '<div style="font-size:0.78rem;color:var(--muted)">Loading dashboard posts...</div>';
+      try {
+        const res = await fetch('/api/blogs');
+        const posts = await res.json();
+        if (!posts || posts.length === 0) {
+          container.innerHTML = '<div style="font-size:0.78rem;color:var(--muted);padding:10px;">No posts created yet. Click "Create New Post" to start.</div>';
+          return;
+        }
+        container.innerHTML = posts.map(post => {
+          const escPost = {
+            id: post.id,
+            slug: post.slug,
+            title: post.title,
+            category: post.category,
+            date: post.date,
+            content: post.content
+          };
+          const jsonStr = JSON.stringify(escPost).replace(/'/g, "&#39;").replace(/"/g, "&quot;");
+          return `
+            <div class="admin-blog-row">
+              <div class="admin-blog-info">
+                <div class="admin-blog-title">${esc(post.title)}</div>
+                <div class="admin-blog-meta">${esc(post.category)} · ${esc(post.date)}</div>
+              </div>
+              <div class="admin-blog-actions">
+                <button class="pill" onclick='editBlogPost(${jsonStr})'>Edit</button>
+                <button class="pill active" style="background:var(--error);border-color:var(--error);color:white;" onclick="deleteBlogPost(${post.id})">Delete</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } catch (err) {
+        container.innerHTML = '<div style="font-size:0.78rem;color:var(--error)">Failed to load dashboard posts.</div>';
+      }
+    }
+
+    function showNewPostForm() {
+      document.getElementById('postEditorContainer').style.display = 'block';
+      document.getElementById('editorFormTitle').textContent = 'Create Blog Post';
+      document.getElementById('editorForm').reset();
+      document.getElementById('editorPostId').value = '';
+      document.getElementById('editorError').style.display = 'none';
+      window.scrollTo({ top: document.getElementById('postEditorContainer').offsetTop - 100, behavior: 'smooth' });
+    }
+
+    function autoGenSlug() {
+      const title = document.getElementById('editorTitle').value;
+      const id = document.getElementById('editorPostId').value;
+      if (!id) {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        document.getElementById('editorSlug').value = slug;
+      }
+    }
+
+    function editBlogPost(post) {
+      document.getElementById('postEditorContainer').style.display = 'block';
+      document.getElementById('editorFormTitle').textContent = 'Edit Blog Post';
+      document.getElementById('editorPostId').value = post.id;
+      document.getElementById('editorTitle').value = post.title;
+      document.getElementById('editorSlug').value = post.slug;
+      document.getElementById('editorCategory').value = post.category;
+      
+      if (Array.isArray(post.content)) {
+        document.getElementById('editorContent').value = post.content.join('\n\n');
+      } else {
+        document.getElementById('editorContent').value = post.content;
+      }
+      
+      document.getElementById('editorError').style.display = 'none';
+      window.scrollTo({ top: document.getElementById('postEditorContainer').offsetTop - 100, behavior: 'smooth' });
+    }
+
+    function cancelEditor() {
+      document.getElementById('postEditorContainer').style.display = 'none';
+      document.getElementById('editorForm').reset();
+    }
+
+    async function saveBlogPost(e) {
+      e.preventDefault();
+      const id = document.getElementById('editorPostId').value;
+      const title = document.getElementById('editorTitle').value;
+      const slug = document.getElementById('editorSlug').value;
+      const category = document.getElementById('editorCategory').value;
+      const contentStr = document.getElementById('editorContent').value;
+      const errEl = document.getElementById('editorError');
+      errEl.style.display = 'none';
+
+      const content = contentStr.split(/\n\s*\n/).map(p => p.trim()).filter(p => p.length > 0);
+
+      const url = id ? `/api/blogs/${id}` : '/api/blogs';
+      const method = id ? 'PUT' : 'POST';
+      const token = localStorage.getItem('admin_token');
+
+      try {
+        const res = await fetch(url, {
+          method: method,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ title, slug, category, content })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          cancelEditor();
+          loadAdminBlogs();
+        } else {
+          errEl.textContent = data.error || 'Failed to save blog post';
+          errEl.style.display = 'block';
+        }
+      } catch (err) {
+        errEl.textContent = 'Server connection failed';
+        errEl.style.display = 'block';
+      }
+    }
+
+    async function deleteBlogPost(id) {
+      if (!confirm('Are you sure you want to delete this blog post?')) return;
+      const token = localStorage.getItem('admin_token');
+      try {
+        const res = await fetch(`/api/blogs/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        if (res.ok) {
+          loadAdminBlogs();
+        } else {
+          const data = await res.json();
+          alert(data.error || 'Failed to delete blog post');
+        }
+      } catch (err) {
+        alert('Server connection failed');
+      }
+    }
+
 
     function toggleSettings() {
       const panel = document.getElementById('settingsPanel');
@@ -577,6 +1294,8 @@
       document.getElementById('cookie-text-val').addEventListener('input', (e) => {
         localStorage.setItem('reclip_cookie_text', e.target.value);
       });
+
+      handleRoute();
     });
 
     function setCookieMode(mode) {
