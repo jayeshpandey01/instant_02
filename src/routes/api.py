@@ -107,7 +107,7 @@ def debug_probe():
     if format_id:
         ydl_opts["format"] = f"{format_id}+bestaudio/best"
     else:
-        ydl_opts["format"] = "best[ext=mp4]/bestvideo+bestaudio/best[ext=mp4]/best"
+        ydl_opts["format"] = "bestvideo+bestaudio/best"
         
     if has_ffmpeg:
         ydl_opts["merge_output_format"] = "mp4"

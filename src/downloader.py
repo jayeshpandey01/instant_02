@@ -214,23 +214,48 @@ def find_matching_cookie_file(url):
 
 def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
     """
-    Runs a native yt-dlp operation. If mode is "none" and it fails indicating auth needed,
-    it attempts to match a local cookie file and retries.
+    Runs a native yt-dlp operation. If mode is "none", it proactively checks if a local matching
+    cookie file exists in BASE_DIR and uses it. If that fails or isn't found, it falls back normally.
     Returns (info_dict_or_none, used_cookie_file, fallback_activated, error_msg_or_none)
     """
     mode = cookies_data.get("mode", "none") if cookies_data else "none"
-    cookie_opts, temp_cookie_file = get_cookie_opts(cookies_data, url)
     
-    ydl_opts = augment_ytdlp_opts({**ydl_opts_base, **cookie_opts, "logger": SilentLogger()})
-    
+    cookie_opts = {}
+    temp_cookie_file = None
     fallback_activated = False
-    used_cookie_file = temp_cookie_file
+    used_cookie_file = None
+    
+    if mode == "none":
+        # Proactively check if we have a matching local cookie file in BASE_DIR
+        local_cookie_path = find_matching_cookie_file(url)
+        if local_cookie_path:
+            cookie_path_to_use = local_cookie_path
+            if os.environ.get("VERCEL"):
+                import shutil
+                temp_cleanup_path = os.path.join("/tmp", os.path.basename(local_cookie_path))
+                try:
+                    shutil.copy2(local_cookie_path, temp_cleanup_path)
+                    cookie_path_to_use = temp_cleanup_path
+                    temp_cookie_file = temp_cleanup_path
+                except Exception:
+                    pass
+            cookie_opts = {"cookiefile": cookie_path_to_use}
+            used_cookie_file = local_cookie_path
+            fallback_activated = True
+    else:
+        cookie_opts, temp_cookie_file = get_cookie_opts(cookies_data, url)
+        if temp_cookie_file:
+            used_cookie_file = temp_cookie_file
+        elif cookie_opts.get("cookiefile"):
+            used_cookie_file = cookie_opts["cookiefile"]
+            
+    ydl_opts = augment_ytdlp_opts({**ydl_opts_base, **cookie_opts, "logger": SilentLogger()})
     
     try:
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=download)
-                return info, os.path.basename(used_cookie_file) if used_cookie_file else None, False, None
+                return info, os.path.basename(used_cookie_file) if used_cookie_file else None, fallback_activated, None
         except Exception as e:
             error_msg = str(e)
             
@@ -246,12 +271,10 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                 "members-only" in error_msg.lower()
             )
             
-            if mode == "none" and needs_auth:
+            # If we didn't already try with a local cookie file, and we need auth, try it now
+            if mode == "none" and needs_auth and not cookie_opts.get("cookiefile"):
                 local_cookie_path = find_matching_cookie_file(url)
                 if local_cookie_path:
-                    fallback_activated = True
-                    used_cookie_file = local_cookie_path
-                    
                     cookie_path_to_use = local_cookie_path
                     temp_cleanup_path = None
                     if os.environ.get("VERCEL"):
@@ -267,7 +290,6 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                     try:
                         with yt_dlp.YoutubeDL(ydl_opts_retry) as ydl_retry:
                             info_retry = ydl_retry.extract_info(url, download=download)
-                            # Keep temp file registered for cleanup if we created it
                             return info_retry, os.path.basename(local_cookie_path), True, None
                     except Exception as e_retry:
                         return None, os.path.basename(local_cookie_path), True, str(e_retry)
@@ -277,7 +299,7 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                                 os.remove(temp_cleanup_path)
                             except OSError:
                                 pass
-            return None, os.path.basename(used_cookie_file) if used_cookie_file else None, False, error_msg
+            return None, os.path.basename(used_cookie_file) if used_cookie_file else None, fallback_activated, error_msg
     finally:
         if temp_cookie_file:
             try:
@@ -364,7 +386,7 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
                 paired = pick_dash_pair([selected])
                 if paired:
                     return paired
-            return f"{fmt_id(selected)}+bestaudio/best[ext=mp4]/best"
+            return f"{fmt_id(selected)}+bestaudio/best"
 
     progressive = sorted(
         [fmt for fmt in formats if is_progressive(fmt)],
@@ -382,7 +404,7 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
     if paired:
         return paired
 
-    return "best[ext=mp4]/bestvideo+bestaudio/best[ext=mp4]/best"
+    return "bestvideo+bestaudio/best"
 
 
 def build_video_format_string(format_id=None, has_ffmpeg=True, height=None, info=None):
@@ -395,9 +417,9 @@ def build_video_format_string(format_id=None, has_ffmpeg=True, height=None, info
 
     if format_id:
         safe_id = str(format_id)
-        return f"{safe_id}/{safe_id}+bestaudio/best[ext=mp4]/best"
+        return f"{safe_id}+bestaudio/best"
 
-    return "best[ext=mp4]/bestvideo+bestaudio/best[ext=mp4]/best"
+    return "bestvideo+bestaudio/best"
 
 
 def _ffprobe_streams(input_path, stream_type):
