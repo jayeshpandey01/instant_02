@@ -414,13 +414,13 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 }]
         elif format_id:
             if has_ffmpeg:
-                ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
+                ydl_opts_base["format"] = f"{format_id}+bestaudio[acodec^=mp4a]/bestaudio/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
             else:
                 ydl_opts_base["format"] = format_id
         else:
             if has_ffmpeg:
-                ydl_opts_base["format"] = "bestvideo+bestaudio/best"
+                ydl_opts_base["format"] = "bestvideo[vcodec^=avc]+bestaudio[acodec^=mp4a]/best[ext=mp4]/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
             else:
                 ydl_opts_base["format"] = "best[ext=mp4]/best"
@@ -501,6 +501,12 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
 
 
 @app.route("/")
+@app.route("/download-instagram-private-reels")
+@app.route("/instagram-audio-downloader")
+@app.route("/download-instagram-stories")
+@app.route("/instagram-video-downloader")
+@app.route("/instagram-photo-downloader")
+@app.route("/profile-picture-downloader")
 @app.route("/about")
 @app.route("/contact")
 @app.route("/blog")
