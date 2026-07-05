@@ -840,17 +840,6 @@ def download_file(job_id):
         return jsonify({"error": "File not ready"}), 404
     
     file_path = job["file"]
-    
-    @after_this_request
-    def remove_file(response):
-        try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-            jobs.pop(job_id, None)
-        except Exception:
-            pass
-        return response
-
     return send_file(file_path, as_attachment=True, download_name=job["filename"])
 
 
