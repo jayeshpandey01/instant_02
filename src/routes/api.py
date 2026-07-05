@@ -48,6 +48,31 @@ def list_cookie_files():
         return jsonify({"error": str(e)}), 500
     return jsonify({"files": files})
 
+@api_bp.route("/api/diagnose")
+def diagnose_env():
+    import sys
+    import shutil
+    import subprocess
+    
+    ffmpeg_sys = shutil.which("ffmpeg")
+    ffmpeg_custom = os.path.exists("/tmp/bin/ffmpeg")
+    
+    version = "unknown"
+    if ffmpeg_sys:
+        try:
+            version = subprocess.check_output([ffmpeg_sys, "-version"], text=True).split("\n")[0]
+        except Exception as e:
+            version = f"error: {e}"
+            
+    return jsonify({
+        "platform": sys.platform,
+        "ffmpeg_in_path": ffmpeg_sys,
+        "ffmpeg_in_tmp": ffmpeg_custom,
+        "ffmpeg_version": version,
+        "env_path": os.environ.get("PATH", ""),
+        "environ": {k: v for k, v in os.environ.items() if "SECRET" not in k and "PASSWORD" not in k and "KEY" not in k}
+    })
+
 @api_bp.route("/api/info", methods=["POST"])
 def get_info():
     data = request.json
