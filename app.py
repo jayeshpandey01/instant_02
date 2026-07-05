@@ -2,6 +2,7 @@ import os
 import uuid
 import glob
 import json
+import shutil
 import tempfile
 import threading
 import time
