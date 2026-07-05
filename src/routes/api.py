@@ -188,7 +188,8 @@ def debug_probe():
                 "ext": f.get("ext")
             } for f in (info.get("formats") or [])
         ],
-        "ytdlp_logs": logger.logs
+        "ytdlp_logs": logger.logs,
+        "raw_info": info
     })
 
 @api_bp.route("/api/info", methods=["POST"])
