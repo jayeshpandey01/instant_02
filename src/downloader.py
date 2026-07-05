@@ -249,7 +249,8 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
         elif cookie_opts.get("cookiefile"):
             used_cookie_file = cookie_opts["cookiefile"]
             
-    ydl_opts = augment_ytdlp_opts({**ydl_opts_base, **cookie_opts, "logger": SilentLogger()})
+    logger_to_use = ydl_opts_base.get("logger") or SilentLogger()
+    ydl_opts = augment_ytdlp_opts({**ydl_opts_base, **cookie_opts, "logger": logger_to_use})
     
     try:
         try:
@@ -286,7 +287,7 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                         except Exception:
                             pass
                     
-                    ydl_opts_retry = augment_ytdlp_opts({**ydl_opts_base, "cookiefile": cookie_path_to_use, "logger": SilentLogger()})
+                    ydl_opts_retry = augment_ytdlp_opts({**ydl_opts_base, "cookiefile": cookie_path_to_use, "logger": logger_to_use})
                     try:
                         with yt_dlp.YoutubeDL(ydl_opts_retry) as ydl_retry:
                             info_retry = ydl_retry.extract_info(url, download=download)

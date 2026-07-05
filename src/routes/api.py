@@ -96,12 +96,26 @@ def debug_probe():
     ensure_ffmpeg()
     has_ffmpeg = shutil.which("ffmpeg") is not None
     
+    class DebugLogger:
+        def __init__(self):
+            self.logs = []
+        def debug(self, msg):
+            self.logs.append(f"DEBUG: {msg}")
+        def warning(self, msg):
+            self.logs.append(f"WARNING: {msg}")
+        def error(self, msg):
+            self.logs.append(f"ERROR: {msg}")
+            
+    logger = DebugLogger()
+    
     ydl_opts = {
         "noplaylist": False,
         "outtmpl": out_template,
-        "quiet": True,
-        "no_warnings": True,
+        "quiet": False,
+        "verbose": True,
+        "no_warnings": False,
         "ignore_no_formats_error": True,
+        "logger": logger,
     }
     
     if format_id:
@@ -173,7 +187,8 @@ def debug_probe():
                 "acodec": f.get("acodec"),
                 "ext": f.get("ext")
             } for f in (info.get("formats") or [])
-        ]
+        ],
+        "ytdlp_logs": logger.logs
     })
 
 @api_bp.route("/api/info", methods=["POST"])
