@@ -1361,6 +1361,35 @@
       line-height: 1.6;
       color: var(--text-muted);
     }
+    /* Hamburger & Mobile Navigation Button Rules */
+    .nav-toggle {
+      display: none;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 24px;
+      height: 18px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      z-index: 101;
+    }
+    .hamburger-bar {
+      width: 24px;
+      height: 3px;
+      background-color: var(--text);
+      border-radius: 2px;
+      transition: all var(--transition);
+    }
+    .nav-toggle.open .hamburger-bar:nth-child(1) {
+      transform: translateY(7.5px) rotate(45deg);
+    }
+    .nav-toggle.open .hamburger-bar:nth-child(2) {
+      opacity: 0;
+    }
+    .nav-toggle.open .hamburger-bar:nth-child(3) {
+      transform: translateY(-7.5px) rotate(-45deg);
+    }
 
     @media (max-width: 768px) {
       .hero-tabs {
@@ -1448,12 +1477,33 @@
         gap: 16px;
       }
       .nav-links {
-        gap: 12px;
+        display: none;
+        flex-direction: column;
+        position: absolute;
+        top: var(--header-h);
+        left: 0;
+        right: 0;
+        background: var(--white);
+        border-bottom: 1.5px solid var(--border);
+        padding: 16px 24px;
+        gap: 16px;
+        box-shadow: var(--shadow-md);
+        z-index: 100;
+      }
+      .nav-links.active {
+        display: flex;
       }
       .nav-link {
-        font-size: 13px;
+        font-size: 15px;
+        width: 100%;
+        padding: 8px 0;
+      }
+      .nav-toggle {
+        display: flex;
       }
     }
+
+
   </style>
 </head>
 
@@ -1469,6 +1519,12 @@
         <a href="/contact" class="nav-link" id="link-contact" onclick="navigate(event, '/contact')">Contact</a>
         <a href="/blog" class="nav-link" id="link-blog" onclick="navigate(event, '/blog')">Blog</a>
       </div>
+      <!-- Hamburger Toggle Button -->
+      <button class="nav-toggle" id="navToggle" aria-label="Toggle Navigation" onclick="toggleMobileMenu()">
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+        <span class="hamburger-bar"></span>
+      </button>
     </nav>
   </header>
 
@@ -2111,7 +2167,20 @@
       function navigate(event, path) {
         if (event) event.preventDefault();
         window.history.pushState({}, '', path);
+
+        const links = document.querySelector('.nav-links');
+        const toggle = document.getElementById('navToggle');
+        if (links) links.classList.remove('active');
+        if (toggle) toggle.classList.remove('open');
+
         handleRoute();
+      }
+
+      function toggleMobileMenu() {
+        const links = document.querySelector('.nav-links');
+        const toggle = document.getElementById('navToggle');
+        if (links) links.classList.toggle('active');
+        if (toggle) toggle.classList.toggle('open');
       }
 
       function handleRoute() {
