@@ -2917,6 +2917,8 @@
         } else if (c.status === 'downloading') {
           const pct = c.progress !== undefined ? ` ${c.progress}%` : '';
           actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...${pct}</span>`;
+        } else if (c.status === 'converting') {
+          actionHtml = `<span class="card-status downloading"><span class="spin"></span> Converting for iOS…</span>`;
         } else if (c.status === 'done') {
           actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
@@ -3001,6 +3003,10 @@
             const data = await res.json();
             if (data.status === 'downloading') {
               c.progress = data.progress || 0;
+              c.status = 'downloading';
+              renderCard(idx);
+            } else if (data.status === 'converting') {
+              c.status = 'converting';
               renderCard(idx);
             } else if (data.status === 'done') {
               clearInterval(iv);

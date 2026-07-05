@@ -439,41 +439,42 @@ def needs_transcoding(input_path):
 
 def convert_to_ios_compatible_mp4(input_path):
     import subprocess
-    import shutil
     if not shutil.which("ffmpeg"):
         return input_path
-    
+
     _, ext = os.path.splitext(input_path)
     if ext.lower() not in [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".3gp", ".avi"]:
         return input_path
-        
-    # Check if transcoding is actually needed to avoid wasting CPU/time
+
+    target_path = os.path.splitext(input_path)[0] + ".mp4"
+    temp_output = input_path + ".ios.mp4"
+
     if not needs_transcoding(input_path):
-        target_path = os.path.splitext(input_path)[0] + ".mp4"
-        if input_path != target_path:
-            try:
-                if os.path.exists(target_path):
-                    os.remove(target_path)
-                os.rename(input_path, target_path)
-            except OSError:
-                return input_path
-            return target_path
-        return input_path
-        
-    temp_output = input_path + ".converted.mp4"
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", input_path,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "23",
-        "-pix_fmt", "yuv420p",
-        "-profile:v", "high",
-        "-level", "4.0",
-        "-c:a", "aac",
-        "-strict", "experimental",
-        temp_output
-    ]
+        # File is already H.264/AAC — just run a fast stream-copy to add faststart moov atom
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            temp_output
+        ]
+    else:
+        # Full transcode to H.264/AAC with faststart
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", input_path,
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "high",
+            "-level", "4.0",
+            "-c:a", "aac",
+            "-strict", "experimental",
+            "-movflags", "+faststart",
+            temp_output
+        ]
+
     try:
         subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
         if os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
@@ -481,7 +482,6 @@ def convert_to_ios_compatible_mp4(input_path):
                 os.remove(input_path)
             except OSError:
                 pass
-            target_path = os.path.splitext(input_path)[0] + ".mp4"
             if os.path.exists(target_path) and target_path != temp_output:
                 try:
                     os.remove(target_path)
@@ -489,7 +489,7 @@ def convert_to_ios_compatible_mp4(input_path):
                     pass
             os.rename(temp_output, target_path)
             return target_path
-    except Exception as e:
+    except Exception:
         if os.path.exists(temp_output):
             try:
                 os.remove(temp_output)
@@ -580,6 +580,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             try:
                 # Transcode files to iOS compatible format before zipping
                 if format_choice != "audio":
+                    job["status"] = "converting"
                     files = [convert_to_ios_compatible_mp4(f) for f in files]
                 
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -606,6 +607,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             # Single file download
             chosen = files[0]
             if format_choice != "audio":
+                job["status"] = "converting"
                 chosen = convert_to_ios_compatible_mp4(chosen)
             ext = os.path.splitext(chosen)[1]
 
@@ -992,9 +994,30 @@ def download_file(job_id):
     job = jobs.get(job_id)
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready"}), 404
-    
+
     file_path = job["file"]
-    return send_file(file_path, as_attachment=True, download_name=job["filename"])
+    filename = job["filename"]
+
+    # Determine the correct MIME type for iOS compatibility
+    _, ext = os.path.splitext(filename)
+    if ext.lower() in [".mp4", ".m4v", ".mov"]:
+        mimetype = "video/mp4"
+    elif ext.lower() == ".mp3":
+        mimetype = "audio/mpeg"
+    elif ext.lower() == ".zip":
+        mimetype = "application/zip"
+    else:
+        mimetype = None
+
+    response = send_file(
+        file_path,
+        as_attachment=True,
+        download_name=filename,
+        conditional=True,     # Enables HTTP 206 Partial Content + Range request support (required by iOS Safari)
+        mimetype=mimetype,
+    )
+    response.headers["Accept-Ranges"] = "bytes"
+    return response
 
 
 @app.route("/api/cleanup", methods=["POST"])
