@@ -374,12 +374,31 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         # Append playlist index to support multi-item downloads without overwriting
         out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}_%(playlist_index)s.%(ext)s")
 
+        def progress_hook(d):
+            if d.get("status") == "downloading":
+                total = d.get("total_bytes") or d.get("total_bytes_estimate")
+                downloaded = d.get("downloaded_bytes", 0)
+                if total:
+                    job["progress"] = int(downloaded / total * 100)
+                else:
+                    percent_str = d.get("_percent_str")
+                    if percent_str:
+                        try:
+                            import re
+                            clean_percent = re.sub(r'\x1b\[[0-9;]*m', '', percent_str).replace("%", "").strip()
+                            job["progress"] = int(float(clean_percent))
+                        except Exception:
+                            pass
+            elif d.get("status") == "finished":
+                job["progress"] = 100
+
         ydl_opts_base = {
             "noplaylist": False,
             "outtmpl": out_template,
             "quiet": True,
             "no_warnings": True,
             "ignore_no_formats_error": True,
+            "progress_hooks": [progress_hook],
         }
 
         import shutil
@@ -810,6 +829,7 @@ def check_status(job_id):
         "error": job.get("error"),
         "filename": job.get("filename"),
         "fallback_used": job.get("fallback_used"),
+        "progress": job.get("progress", 0),
     })
 
 

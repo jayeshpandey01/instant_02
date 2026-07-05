@@ -1664,7 +1664,8 @@
       if (c.status === 'ready') {
         actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">${c.isCarousel ? 'Download Gallery' : 'Download'}</button>${qualityChips}`;
       } else if (c.status === 'downloading') {
-        actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...</span>`;
+        const pct = c.progress !== undefined ? ` ${c.progress}%` : '';
+        actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...${pct}</span>`;
       } else if (c.status === 'done') {
         actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
@@ -1747,7 +1748,10 @@
         try {
           const res = await fetch(`/api/status/${c.jobId}`);
           const data = await res.json();
-          if (data.status === 'done') {
+          if (data.status === 'downloading') {
+            c.progress = data.progress || 0;
+            renderCard(idx);
+          } else if (data.status === 'done') {
             clearInterval(iv);
             c.status = 'done';
             c.filename = data.filename;
