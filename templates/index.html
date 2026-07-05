@@ -2832,6 +2832,8 @@
                 fallbackUsed: data.fallback_used || null,
                 isCarousel: data.is_carousel || false,
                 itemCount: data.item_count || 0,
+                mediaType: data.media_type || 'video',
+                isImage: data.media_type === 'image',
               };
             }
           } catch (err) {
@@ -2896,6 +2898,13 @@
         let thumbHtml;
         if (isAudio) {
           thumbHtml = `<div class="no-thumb" style="color:var(--accent)"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`;
+        } else if (c.isImage) {
+          // Image post: show the thumbnail as an actual <img> (or image icon)
+          if (c.thumbnail) {
+            thumbHtml = `<img src="${c.thumbnail}" alt="" style="object-fit:contain;background:#0a0c1a;">`;
+          } else {
+            thumbHtml = `<div class="no-thumb" style="color:var(--secondary)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>`;
+          }
         } else if (c.thumbnail) {
           thumbHtml = `<img src="${c.thumbnail}" alt="">`;
         } else {
@@ -2905,6 +2914,8 @@
         let qualityChips = '';
         if (c.isCarousel) {
           qualityChips = `<span class="carousel-badge" style="font-size: 0.65rem; background: var(--accent); color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 8px;">📷 Gallery (${c.itemCount} items)</span>`;
+        } else if (c.isImage) {
+          qualityChips = `<span class="carousel-badge" style="font-size: 0.65rem; background: var(--secondary); color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 8px;">🖼️ Image</span>`;
         } else if (!isAudio && c.formats && c.formats.length > 1) {
           qualityChips = c.formats.map(f =>
             `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" onclick="pickFormat(${idx}, '${f.id}')">${f.label}</button>`
@@ -2913,12 +2924,11 @@
 
         let actionHtml = '';
         if (c.status === 'ready') {
-          actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">${c.isCarousel ? 'Download Gallery' : 'Download'}</button>${qualityChips}`;
+          const dlLabel = c.isCarousel ? 'Download Gallery' : c.isImage ? 'Download Image' : 'Download';
+          actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">${dlLabel}</button>${qualityChips}`;
         } else if (c.status === 'downloading') {
           const pct = c.progress !== undefined ? ` ${c.progress}%` : '';
           actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...${pct}</span>`;
-        } else if (c.status === 'converting') {
-          actionHtml = `<span class="card-status downloading"><span class="spin"></span> Converting for iOS…</span>`;
         } else if (c.status === 'done') {
           actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
@@ -2972,8 +2982,8 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               url: c.url,
-              format: currentFormat,
-              format_id: c.selectedFormatId,
+              format: c.isImage ? 'image' : currentFormat,
+              format_id: c.isImage ? null : c.selectedFormatId,
               title: c.title || '',
               cookies: cookies,
             }),
@@ -3003,10 +3013,6 @@
             const data = await res.json();
             if (data.status === 'downloading') {
               c.progress = data.progress || 0;
-              c.status = 'downloading';
-              renderCard(idx);
-            } else if (data.status === 'converting') {
-              c.status = 'converting';
               renderCard(idx);
             } else if (data.status === 'done') {
               clearInterval(iv);
