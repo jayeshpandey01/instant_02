@@ -75,6 +75,98 @@ def diagnose_env():
         "environ": {k: v for k, v in os.environ.items() if "SECRET" not in k and "PASSWORD" not in k and "KEY" not in k}
     })
 
+@api_bp.route("/api/debug-probe", methods=["POST"])
+def debug_probe():
+    import subprocess
+    import shutil
+    data = request.json or {}
+    url = data.get("url", "").strip()
+    format_id = data.get("format_id")
+    cookies_data = data.get("cookies") or {"mode": "none"}
+    
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+        
+    job_id = "probe_" + uuid.uuid4().hex[:8]
+    out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}_%(playlist_index)s.%(ext)s")
+    
+    # Run yt-dlp download
+    ensure_ffmpeg()
+    has_ffmpeg = shutil.which("ffmpeg") is not None
+    
+    from src.downloader import build_video_format_string, get_ffprobe_path
+    
+    ydl_opts = {
+        "noplaylist": False,
+        "outtmpl": out_template,
+        "quiet": True,
+        "no_warnings": True,
+        "ignore_no_formats_error": True,
+    }
+    
+    if format_id:
+        ydl_opts["format"] = f"{format_id}+bestaudio/best"
+    else:
+        ydl_opts["format"] = "best[ext=mp4]/bestvideo+bestaudio/best[ext=mp4]/best"
+        
+    if has_ffmpeg:
+        ydl_opts["merge_output_format"] = "mp4"
+        
+    info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts, url, cookies_data, download=True)
+    
+    # Collect files
+    downloaded_files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*"))
+    
+    probe_results = []
+    ffprobe = get_ffprobe_path()
+    
+    for path in downloaded_files:
+        ffprobe_info = {}
+        if ffprobe and os.path.isfile(path):
+            cmd = [
+                ffprobe,
+                "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                path
+            ]
+            try:
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+                ffprobe_info = {
+                    "returncode": res.returncode,
+                    "stdout": res.stdout,
+                    "stderr": res.stderr,
+                    "has_audio_stream_eval": bool(res.stdout.strip())
+                }
+            except Exception as ex:
+                ffprobe_info = {"error": str(ex)}
+        else:
+            ffprobe_info = {"status": "ffprobe or file missing"}
+            
+        probe_results.append({
+            "path": path,
+            "exists": os.path.exists(path),
+            "size": os.path.getsize(path) if os.path.exists(path) else 0,
+            "ffprobe": ffprobe_info
+        })
+        
+    # Clean up files created
+    for path in downloaded_files:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+            
+    return jsonify({
+        "info_title": info.get("title") if info else None,
+        "ytdlp_error": err,
+        "probe_results": probe_results,
+        "used_cookie": used_cookie,
+        "fallback": fallback,
+        "has_ffmpeg": has_ffmpeg
+    })
+
 @api_bp.route("/api/info", methods=["POST"])
 def get_info():
     data = request.json
