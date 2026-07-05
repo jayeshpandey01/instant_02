@@ -2930,7 +2930,7 @@
           const pct = c.progress !== undefined ? ` ${c.progress}%` : '';
           actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...${pct}</span>`;
         } else if (c.status === 'done') {
-          actionHtml = `<button class="card-dl-btn done" onclick="saveCard(${idx})">Save</button>
+          actionHtml = `<a class="card-dl-btn done" href="/api/file/${c.jobId}" download="${esc(c.filename || '')}" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Save</a>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
         } else if (c.status === 'error') {
           actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
@@ -3044,7 +3044,9 @@
         const a = document.createElement('a');
         a.href = `/api/file/${c.jobId}`;
         a.download = c.filename || '';
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         activeJobIds = activeJobIds.filter(id => id !== c.jobId);
       }
 

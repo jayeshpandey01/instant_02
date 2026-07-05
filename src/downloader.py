@@ -601,7 +601,9 @@ def prefetch_video_info(url, cookies_data):
 
 
 def build_instagram_retry_format(info, format_id=None, height=None):
-    return resolve_instagram_video_format(info, format_id=format_id, height=height)
+    if format_id:
+        return f"{format_id}+bestaudio/best"
+    return "bestvideo+bestaudio/best"
 
 
 def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, format_id=None, height=None):
