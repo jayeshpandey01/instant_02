@@ -409,6 +409,33 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                 pass
 
 
+def needs_transcoding(input_path):
+    import subprocess
+    import shutil
+    if not shutil.which("ffmpeg"):
+        return False
+        
+    cmd = ["ffmpeg", "-i", input_path]
+    try:
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        stderr = result.stderr.lower()
+        
+        has_video = "video:" in stderr
+        is_h264 = "video: h264" in stderr or "video: avc" in stderr
+        
+        if has_video and not is_h264:
+            return True
+            
+        has_audio = "audio:" in stderr
+        is_compatible_audio = "audio: aac" in stderr or "audio: mp3" in stderr or "audio: mp4a" in stderr
+        if has_audio and not is_compatible_audio:
+            return True
+            
+        return False
+    except Exception:
+        return True
+
+
 def convert_to_ios_compatible_mp4(input_path):
     import subprocess
     import shutil
@@ -419,11 +446,26 @@ def convert_to_ios_compatible_mp4(input_path):
     if ext.lower() not in [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".3gp", ".avi"]:
         return input_path
         
+    # Check if transcoding is actually needed to avoid wasting CPU/time
+    if not needs_transcoding(input_path):
+        target_path = os.path.splitext(input_path)[0] + ".mp4"
+        if input_path != target_path:
+            try:
+                if os.path.exists(target_path):
+                    os.remove(target_path)
+                os.rename(input_path, target_path)
+            except OSError:
+                return input_path
+            return target_path
+        return input_path
+        
     temp_output = input_path + ".converted.mp4"
     cmd = [
         "ffmpeg", "-y",
         "-i", input_path,
         "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "23",
         "-pix_fmt", "yuv420p",
         "-profile:v", "high",
         "-level", "4.0",
