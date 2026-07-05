@@ -1,5 +1,4 @@
 import os
-from dotenv import load_dotenv
 
 DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))

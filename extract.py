@@ -26,7 +26,6 @@ def extract(functions, out_file, imports, bp_replace=None):
 
 # 1. config.py
 extract(["load_env"], "src/config.py", '''import os
-from dotenv import load_dotenv
 
 DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
