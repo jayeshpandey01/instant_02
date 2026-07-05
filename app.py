@@ -212,6 +212,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             "outtmpl": out_template,
             "quiet": True,
             "no_warnings": True,
+            "ignore_no_formats_error": True,
         }
 
         if format_choice == "audio":
@@ -340,6 +341,7 @@ def get_info():
         "noplaylist": False,
         "quiet": True,
         "no_warnings": True,
+        "ignore_no_formats_error": True,
     }
     try:
         info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
