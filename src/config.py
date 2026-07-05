@@ -1,6 +1,10 @@
 import os
 
-DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
+if os.environ.get("VERCEL"):
+    DOWNLOAD_DIR = "/tmp/downloads"
+else:
+    DOWNLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "downloads")
+
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
