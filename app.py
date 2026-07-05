@@ -2,10 +2,12 @@ import os
 import uuid
 import glob
 import json
-import subprocess
-import threading
 import tempfile
+import threading
+import time
+from urllib.parse import urlparse
 from flask import Flask, request, jsonify, send_file, render_template
+import yt_dlp
 
 app = Flask(__name__)
 DOWNLOAD_DIR = "/tmp/downloads" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "downloads")
@@ -14,29 +16,26 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 jobs = {}
 
 
-import time
-from urllib.parse import urlparse
-
-def get_cookie_args(cookies_data, url=None):
+def get_cookie_opts(cookies_data, url=None):
     """
-    Returns a tuple of (args_list, temp_file_path).
+    Returns a tuple of (opts_dict, temp_file_path).
     If a temporary file is created, its path is returned so it can be cleaned up later.
     """
     if not cookies_data:
-        return [], None
+        return {}, None
     
     mode = cookies_data.get("mode", "none")
     if mode == "browser":
         browser = cookies_data.get("browser", "").lower().strip()
         if browser:
-            return ["--cookies-from-browser", browser], None
+            return {"cookiesfrombrowser": (browser,)}, None
     elif mode == "local_file":
         filename = cookies_data.get("filename", "").strip()
         if filename:
             safe_name = os.path.basename(filename)
             file_path = os.path.join(os.path.dirname(__file__), safe_name)
             if os.path.exists(file_path):
-                return ["--cookies", file_path], None
+                return {"cookiefile": file_path}, None
             else:
                 raise FileNotFoundError(f"Local cookie file {safe_name} not found")
     elif mode == "text":
@@ -80,14 +79,14 @@ def get_cookie_args(cookies_data, url=None):
             try:
                 with os.fdopen(fd, 'w', encoding='utf-8') as f:
                     f.write(netscape_text)
-                return ["--cookies", path], path
+                return {"cookiefile": path}, path
             except Exception as e:
                 try:
                     os.remove(path)
                 except OSError:
                     pass
                 raise e
-    return [], None
+    return {}, None
 
 
 def find_matching_cookie_file(url):
@@ -121,40 +120,51 @@ def find_matching_cookie_file(url):
     return None
 
 
-def run_ytdlp_with_fallback(cmd_base, url, cookies_data, timeout=60):
+def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
+    """
+    Runs a native yt-dlp operation. If mode is "none" and it fails indicating auth needed,
+    it attempts to match a local cookie file and retries.
+    Returns (info_dict_or_none, used_cookie_file, fallback_activated, error_msg_or_none)
+    """
     mode = cookies_data.get("mode", "none") if cookies_data else "none"
-    cookie_args, temp_cookie_file = get_cookie_args(cookies_data, url)
+    cookie_opts, temp_cookie_file = get_cookie_opts(cookies_data, url)
     
-    cmd = cmd_base + cookie_args + [url]
+    ydl_opts = {**ydl_opts_base, **cookie_opts}
     
     fallback_activated = False
     used_cookie_file = temp_cookie_file
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        is_failure = result.returncode != 0
-        error_msg = result.stderr.strip() if is_failure else ""
-        
-        needs_auth = (
-            "sign in" in error_msg.lower() or
-            "login" in error_msg.lower() or
-            "empty media response" in error_msg.lower() or
-            "confirm you are not a bot" in error_msg.lower() or
-            "private video" in error_msg.lower() or
-            "http error 403" in error_msg.lower() or
-            "members-only" in error_msg.lower()
-        )
-        
-        if is_failure and mode == "none" and needs_auth:
-            local_cookie_path = find_matching_cookie_file(url)
-            if local_cookie_path:
-                fallback_activated = True
-                used_cookie_file = local_cookie_path
-                retry_cmd = cmd_base + ["--cookies", local_cookie_path] + [url]
-                result_retry = subprocess.run(retry_cmd, capture_output=True, text=True, timeout=timeout)
-                return result_retry, os.path.basename(local_cookie_path), True
-                
-        return result, os.path.basename(used_cookie_file) if used_cookie_file else None, fallback_activated
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=download)
+                return info, os.path.basename(used_cookie_file) if used_cookie_file else None, False, None
+        except Exception as e:
+            error_msg = str(e)
+            
+            needs_auth = (
+                "sign in" in error_msg.lower() or
+                "login" in error_msg.lower() or
+                "empty media response" in error_msg.lower() or
+                "confirm you are not a bot" in error_msg.lower() or
+                "private video" in error_msg.lower() or
+                "http error 403" in error_msg.lower() or
+                "members-only" in error_msg.lower()
+            )
+            
+            if mode == "none" and needs_auth:
+                local_cookie_path = find_matching_cookie_file(url)
+                if local_cookie_path:
+                    fallback_activated = True
+                    used_cookie_file = local_cookie_path
+                    ydl_opts_retry = {**ydl_opts_base, "cookiefile": local_cookie_path}
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts_retry) as ydl_retry:
+                            info_retry = ydl_retry.extract_info(url, download=download)
+                            return info_retry, os.path.basename(local_cookie_path), True, None
+                    except Exception as e_retry:
+                        return None, os.path.basename(local_cookie_path), True, str(e_retry)
+            return None, os.path.basename(used_cookie_file) if used_cookie_file else None, False, error_msg
     finally:
         if temp_cookie_file:
             try:
@@ -168,68 +178,73 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         job = jobs[job_id]
         out_template = os.path.join(DOWNLOAD_DIR, f"{job_id}.%(ext)s")
 
-        cmd_base = ["yt-dlp", "--no-playlist", "-o", out_template]
+        ydl_opts_base = {
+            "noplaylist": True,
+            "outtmpl": out_template,
+            "quiet": True,
+            "no_warnings": True,
+        }
 
         if format_choice == "audio":
-            cmd_base += ["-x", "--audio-format", "mp3"]
+            ydl_opts_base["format"] = "bestaudio/best"
+            ydl_opts_base["postprocessors"] = [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }]
         elif format_id:
-            cmd_base += ["-f", f"{format_id}+bestaudio/best", "--merge-output-format", "mp4"]
+            ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
+            ydl_opts_base["merge_output_format"] = "mp4"
         else:
-            cmd_base += ["-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4"]
+            ydl_opts_base["format"] = "bestvideo+bestaudio/best"
+            ydl_opts_base["merge_output_format"] = "mp4"
 
-        result, used_cookie, fallback = run_ytdlp_with_fallback(cmd_base, url, cookies_data, timeout=300)
+        info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
 
-        try:
-            if result.returncode != 0:
-                job["status"] = "error"
-                job["error"] = result.stderr.strip().split("\n")[-1]
-                return
+        if err:
+            job["status"] = "error"
+            job["error"] = err.split("\n")[-1]
+            return
 
-            if fallback:
-                job["fallback_used"] = used_cookie
+        if fallback:
+            job["fallback_used"] = used_cookie
 
-            files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
-            if not files:
-                job["status"] = "error"
-                job["error"] = "Download completed but no file was found"
-                return
+        files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}.*"))
+        if not files:
+            job["status"] = "error"
+            job["error"] = "Download completed but no file was found"
+            return
 
-            if format_choice == "audio":
-                target = [f for f in files if f.endswith(".mp3")]
-                chosen = target[0] if target else files[0]
-            else:
-                target = [f for f in files if f.endswith(".mp4")]
-                chosen = target[0] if target else files[0]
+        if format_choice == "audio":
+            target = [f for f in files if f.endswith(".mp3")]
+            chosen = target[0] if target else files[0]
+        else:
+            target = [f for f in files if f.endswith(".mp4")]
+            chosen = target[0] if target else files[0]
 
-            for f in files:
-                if f != chosen:
-                    try:
-                        os.remove(f)
-                    except OSError:
-                        pass
+        for f in files:
+            if f != chosen:
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
 
-            job["status"] = "done"
-            job["file"] = chosen
-            ext = os.path.splitext(chosen)[1]
+        job["status"] = "done"
+        job["file"] = chosen
+        ext = os.path.splitext(chosen)[1]
+        
+        title = info.get("title", "") if info else ""
+        if not title:
             title = job.get("title", "").strip()
-            # Sanitize title for filename
-            if title:
-                safe_title = "".join(c for c in title if c not in r'\/:*?"<>|').strip()[:20].strip()
-                job["filename"] = f"{safe_title}{ext}" if safe_title else os.path.basename(chosen)
-            else:
-                job["filename"] = os.path.basename(chosen)
-        except subprocess.TimeoutExpired:
-            job["status"] = "error"
-            job["error"] = "Download timed out (5 min limit)"
-        except Exception as e:
-            job["status"] = "error"
-            job["error"] = str(e)
-    finally:
-        if temp_cookie_file:
-            try:
-                os.remove(temp_cookie_file)
-            except OSError:
-                pass
+
+        if title:
+            safe_title = "".join(c for c in title if c not in r'\/:*?"<>|').strip()[:20].strip()
+            job["filename"] = f"{safe_title}{ext}" if safe_title else os.path.basename(chosen)
+        else:
+            job["filename"] = os.path.basename(chosen)
+    except Exception as e:
+        job["status"] = "error"
+        job["error"] = str(e)
 
 
 @app.route("/")
@@ -265,13 +280,15 @@ def get_info():
         return jsonify({"error": "No URL provided"}), 400
 
     cookies_data = data.get("cookies")
-    cmd_base = ["yt-dlp", "--no-playlist", "-j"]
+    ydl_opts_base = {
+        "noplaylist": True,
+        "quiet": True,
+        "no_warnings": True,
+    }
     try:
-        result, used_cookie, fallback = run_ytdlp_with_fallback(cmd_base, url, cookies_data, timeout=60)
-        if result.returncode != 0:
-            return jsonify({"error": result.stderr.strip().split("\n")[-1]}), 400
-
-        info = json.loads(result.stdout)
+        info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
+        if err:
+            return jsonify({"error": err.split("\n")[-1]}), 400
 
         # Build quality options — keep best format per resolution
         best_by_height = {}
@@ -301,8 +318,6 @@ def get_info():
         if fallback:
             res_data["fallback_used"] = used_cookie
         return jsonify(res_data)
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Timed out fetching video info"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
@@ -315,21 +330,22 @@ def get_playlist_info():
         return jsonify({"error": "No URL provided"}), 400
 
     cookies_data = data.get("cookies")
-    cmd_base = ["yt-dlp", "--flat-playlist", "-J"]
+    ydl_opts_base = {
+        "extract_flat": "in_playlist",
+        "quiet": True,
+        "no_warnings": True,
+    }
     try:
-        result, used_cookie, fallback = run_ytdlp_with_fallback(cmd_base, url, cookies_data, timeout=60)
-        if result.returncode != 0:
-            return jsonify({"error": result.stderr.strip().split("\n")[-1]}), 400
+        info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
+        if err:
+            return jsonify({"error": err.split("\n")[-1]}), 400
 
-        info = json.loads(result.stdout)
         entries = info.get("entries", [])
         urls = [entry.get("url") for entry in entries if entry.get("url")]
         res_data = {"urls": urls}
         if fallback:
             res_data["fallback_used"] = used_cookie
         return jsonify(res_data)
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Timed out fetching playlist info"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
