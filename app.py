@@ -35,6 +35,15 @@ def get_cookie_opts(cookies_data, url=None):
             safe_name = os.path.basename(filename)
             file_path = os.path.join(os.path.dirname(__file__), safe_name)
             if os.path.exists(file_path):
+                if os.environ.get("VERCEL"):
+                    # Copy to writeable /tmp to prevent Vercel read-only filesystem write errors
+                    import shutil
+                    tmp_path = os.path.join("/tmp", safe_name)
+                    try:
+                        shutil.copy2(file_path, tmp_path)
+                        return {"cookiefile": tmp_path}, tmp_path
+                    except Exception:
+                        pass
                 return {"cookiefile": file_path}, None
             else:
                 raise FileNotFoundError(f"Local cookie file {safe_name} not found")
@@ -157,13 +166,32 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                 if local_cookie_path:
                     fallback_activated = True
                     used_cookie_file = local_cookie_path
-                    ydl_opts_retry = {**ydl_opts_base, "cookiefile": local_cookie_path}
+                    
+                    cookie_path_to_use = local_cookie_path
+                    temp_cleanup_path = None
+                    if os.environ.get("VERCEL"):
+                        import shutil
+                        temp_cleanup_path = os.path.join("/tmp", os.path.basename(local_cookie_path))
+                        try:
+                            shutil.copy2(local_cookie_path, temp_cleanup_path)
+                            cookie_path_to_use = temp_cleanup_path
+                        except Exception:
+                            pass
+                    
+                    ydl_opts_retry = {**ydl_opts_base, "cookiefile": cookie_path_to_use}
                     try:
                         with yt_dlp.YoutubeDL(ydl_opts_retry) as ydl_retry:
                             info_retry = ydl_retry.extract_info(url, download=download)
+                            # Keep temp file registered for cleanup if we created it
                             return info_retry, os.path.basename(local_cookie_path), True, None
                     except Exception as e_retry:
                         return None, os.path.basename(local_cookie_path), True, str(e_retry)
+                    finally:
+                        if temp_cleanup_path:
+                            try:
+                                os.remove(temp_cleanup_path)
+                            except OSError:
+                                pass
             return None, os.path.basename(used_cookie_file) if used_cookie_file else None, False, error_msg
     finally:
         if temp_cookie_file:
