@@ -629,15 +629,27 @@ def build_instagram_retry_format(info, format_id=None, height=None):
     return "bestvideo+bestaudio/best"
 
 
+def has_audio_in_metadata(info):
+    if not info:
+        return False
+    formats = info.get("formats") or []
+    for f in formats:
+        acodec = f.get("acodec")
+        if acodec and acodec.lower() != "none":
+            return True
+    return False
+
+
 def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, format_id=None, height=None):
     files = finalize_video_files(job_id, collect_download_files(job_id, "video"))
     if files and all(has_audio_stream(path) for path in files):
         return info, files, None
 
-    # If we have files but ffprobe is unavailable, don't discard them — 
-    # has_audio_stream already returns True optimistically in that case,
-    # so we only reach here when ffprobe positively confirmed no audio.
-    # Still, only retry if we actually got files without audio.
+    # If the metadata explicitly indicates there are no audio streams,
+    # the video is silent. We skip retrying and return the files as-is.
+    if info and not has_audio_in_metadata(info):
+        return info, files, None
+
     if not files:
         return info, [], "Download completed but no file was found"
 
@@ -655,17 +667,8 @@ def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, 
         return info, [], err
 
     files = finalize_video_files(job_id, collect_download_files(job_id, "video"))
-    if files and all(has_audio_stream(path) for path in files):
-        return info_retry or info, files, None
-
-    # Only report "no audio" if ffprobe positively confirmed it (not when ffprobe is missing)
-    if files:
-        ffprobe_available = get_ffprobe_path() is not None
-        if ffprobe_available and not all(has_audio_stream(path) for path in files):
-            return info_retry or info, files, "Download completed but the video has no audio track"
-        # ffprobe unavailable or check passed — return files as-is
-        return info_retry or info, files, None
-
+    # Return the files and succeed. We no longer raise "no audio track" error
+    # because getting a silent video is better than a download failure.
     return info_retry or info, files, None
 
 
