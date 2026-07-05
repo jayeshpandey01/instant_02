@@ -8,6 +8,10 @@ from src.tasks import cleanup_loop
 # Initialize environment
 load_env()
 
+# Ensure FFmpeg is available
+from src.downloader import ensure_ffmpeg
+ensure_ffmpeg()
+
 # Initialize Flask app
 app = Flask(__name__)
 
