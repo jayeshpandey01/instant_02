@@ -28,6 +28,47 @@ def load_env():
 
 load_env()
 
+def ensure_ffmpeg():
+    import shutil
+    import sys
+    import urllib.request
+    import zipfile
+    
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
+        
+    if not sys.platform.startswith("linux"):
+        return None
+        
+    tmp_bin = "/tmp/bin"
+    ffmpeg_path = os.path.join(tmp_bin, "ffmpeg")
+    if os.path.exists(ffmpeg_path) and os.access(ffmpeg_path, os.X_OK):
+        if tmp_bin not in os.environ["PATH"]:
+            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ["PATH"]
+        return ffmpeg_path
+        
+    os.makedirs(tmp_bin, exist_ok=True)
+    zip_path = os.path.join(tmp_bin, "ffmpeg.zip")
+    url = "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-linux-64.zip"
+    
+    try:
+        urllib.request.urlretrieve(url, zip_path)
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(tmp_bin)
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+        os.chmod(ffmpeg_path, 0o755)
+        
+        if tmp_bin not in os.environ["PATH"]:
+            os.environ["PATH"] = tmp_bin + os.pathsep + os.environ["PATH"]
+        return ffmpeg_path
+    except Exception as e:
+        print(f"Error downloading ffmpeg: {e}")
+        return None
+
+ensure_ffmpeg()
+
 app = Flask(__name__)
 
 # SQLite Database Helper Functions
@@ -368,6 +409,52 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                 pass
 
 
+def convert_to_ios_compatible_mp4(input_path):
+    import subprocess
+    import shutil
+    if not shutil.which("ffmpeg"):
+        return input_path
+    
+    _, ext = os.path.splitext(input_path)
+    if ext.lower() not in [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".3gp", ".avi"]:
+        return input_path
+        
+    temp_output = input_path + ".converted.mp4"
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-c:v", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-profile:v", "high",
+        "-level", "4.0",
+        "-c:a", "aac",
+        "-strict", "experimental",
+        temp_output
+    ]
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        if os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
+            target_path = os.path.splitext(input_path)[0] + ".mp4"
+            if os.path.exists(target_path) and target_path != temp_output:
+                try:
+                    os.remove(target_path)
+                except OSError:
+                    pass
+            os.rename(temp_output, target_path)
+            return target_path
+    except Exception as e:
+        if os.path.exists(temp_output):
+            try:
+                os.remove(temp_output)
+            except OSError:
+                pass
+    return input_path
+
+
 def run_download(job_id, url, format_choice, format_id, cookies_data=None):
     try:
         job = jobs[job_id]
@@ -451,6 +538,10 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             zip_path = os.path.join(DOWNLOAD_DIR, zip_filename)
             
             try:
+                # Transcode files to iOS compatible format before zipping
+                if format_choice != "audio":
+                    files = [convert_to_ios_compatible_mp4(f) for f in files]
+                
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, f in enumerate(sorted(files)):
                         base = os.path.basename(f)
@@ -474,6 +565,8 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         else:
             # Single file download
             chosen = files[0]
+            if format_choice != "audio":
+                chosen = convert_to_ios_compatible_mp4(chosen)
             ext = os.path.splitext(chosen)[1]
 
         job["status"] = "done"
