@@ -1,6 +1,8 @@
 import os
+import re
 import shutil
 import tempfile
+import time
 import urllib.request
 import zipfile
 import subprocess
@@ -8,6 +10,8 @@ import yt_dlp
 import glob
 from urllib.parse import urlparse
 from src.config import BASE_DIR, DOWNLOAD_DIR
+
+VIDEO_EXTENSIONS = {".mp4", ".webm", ".mkv", ".mov", ".m4v", ".3gp", ".avi"}
 
 
 def ensure_ffmpeg():
@@ -233,6 +237,96 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
             except OSError:
                 pass
 
+def build_video_format_string(format_id=None, has_ffmpeg=True):
+    """Prefer progressive MP4, then merge DASH video+audio when ffmpeg is available."""
+    if not has_ffmpeg:
+        if format_id:
+            return (
+                f"best[format_id={format_id}][acodec!=none]/"
+                f"best[format_id={format_id}]/"
+                "best[ext=mp4][acodec!=none]/best[ext=mp4]/best"
+            )
+        return "best[ext=mp4][acodec!=none]/best[ext=mp4]/best"
+
+    if format_id:
+        return (
+            f"best[format_id={format_id}][acodec!=none]/"
+            f"{format_id}+bestaudio[ext=m4a]/{format_id}+bestaudio/"
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+            "best[ext=mp4][acodec!=none]/best[ext=mp4]/best"
+        )
+
+    return (
+        "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+        "bestvideo+bestaudio/"
+        "best[ext=mp4][acodec!=none]/best[ext=mp4]/best"
+    )
+
+
+def has_audio_stream(input_path):
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe or not os.path.isfile(input_path):
+        return True
+
+    cmd = [
+        ffprobe,
+        "-v", "error",
+        "-select_streams", "a",
+        "-show_entries", "stream=codec_type",
+        "-of", "csv=p=0",
+        input_path,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+        )
+        return bool(result.stdout.strip())
+    except Exception:
+        return True
+
+
+def collect_download_files(job_id, format_choice):
+    """Return final media files for a job, excluding yt-dlp merge fragments."""
+    pattern = os.path.join(DOWNLOAD_DIR, f"{job_id}*")
+    all_files = [f for f in glob.glob(pattern) if os.path.isfile(f)]
+    if not all_files:
+        return []
+
+    filtered = []
+    for path in all_files:
+        base = os.path.basename(path)
+        if re.search(r"\.f\d+\.", base):
+            continue
+        if base.endswith(".ios.mp4"):
+            continue
+        if format_choice not in ("image", "audio") and "_img_" in base:
+            continue
+        filtered.append(path)
+
+    if not filtered:
+        filtered = all_files
+
+    if format_choice == "audio":
+        audio_files = [
+            f for f in filtered
+            if os.path.splitext(f)[1].lower() in {".mp3", ".m4a", ".aac", ".opus", ".wav"}
+        ]
+        return sorted(audio_files or filtered)
+
+    if format_choice == "image":
+        return sorted(filtered)
+
+    video_files = [
+        f for f in filtered
+        if os.path.splitext(f)[1].lower() in VIDEO_EXTENSIONS
+    ]
+    return sorted(video_files or filtered)
+
+
 def needs_transcoding(input_path):
     import subprocess
     import shutil
@@ -276,6 +370,8 @@ def convert_to_ios_compatible_mp4(input_path):
         cmd = [
             "ffmpeg", "-y",
             "-i", input_path,
+            "-map", "0:v:0?",
+            "-map", "0:a:0?",
             "-c", "copy",
             "-movflags", "+faststart",
             temp_output
@@ -285,6 +381,8 @@ def convert_to_ios_compatible_mp4(input_path):
         cmd = [
             "ffmpeg", "-y",
             "-i", input_path,
+            "-map", "0:v:0?",
+            "-map", "0:a:0?",
             "-c:v", "libx264",
             "-preset", "ultrafast",
             "-crf", "23",

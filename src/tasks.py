@@ -4,7 +4,14 @@ import glob
 import shutil
 import re
 from src.config import DOWNLOAD_DIR
-from src.downloader import run_ytdlp_with_fallback, convert_to_ios_compatible_mp4
+from src.downloader import (
+    run_ytdlp_with_fallback,
+    convert_to_ios_compatible_mp4,
+    ensure_ffmpeg,
+    build_video_format_string,
+    has_audio_stream,
+    collect_download_files,
+)
 
 
 import json
@@ -191,8 +198,8 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             "progress_hooks": [progress_hook],
         }
 
+        ensure_ffmpeg()
         has_ffmpeg = shutil.which("ffmpeg") is not None
-
 
         if format_choice == "image":
             info_opts = {
@@ -283,18 +290,10 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                     "preferredcodec": "mp3",
                     "preferredquality": "192",
                 }]
-        elif format_id:
-            if has_ffmpeg:
-                ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
-                ydl_opts_base["merge_output_format"] = "mp4"
-            else:
-                ydl_opts_base["format"] = format_id
         else:
+            ydl_opts_base["format"] = build_video_format_string(format_id, has_ffmpeg)
             if has_ffmpeg:
-                ydl_opts_base["format"] = "bestvideo+bestaudio/best"
                 ydl_opts_base["merge_output_format"] = "mp4"
-            else:
-                ydl_opts_base["format"] = "best[ext=mp4]/best"
 
         info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
 
@@ -303,9 +302,34 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             job["error"] = err.split("\n")[-1]
             return
 
-
         if fallback:
             job["fallback_used"] = used_cookie
+
+        files = collect_download_files(job_id, format_choice)
+        if (
+            format_choice not in ("audio", "image")
+            and files
+            and len(files) == 1
+            and not has_audio_stream(files[0])
+        ):
+            for stale in glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*")):
+                try:
+                    if os.path.isfile(stale):
+                        os.remove(stale)
+                except OSError:
+                    pass
+
+            retry_opts = dict(ydl_opts_base)
+            retry_opts["format"] = build_video_format_string(None, has_ffmpeg)
+            info, used_cookie, fallback, err = run_ytdlp_with_fallback(
+                retry_opts, url, cookies_data, download=True
+            )
+            if err:
+                job["status"] = "error"
+                job["error"] = err.split("\n")[-1]
+                return
+            if fallback:
+                job["fallback_used"] = used_cookie
 
         # ---------------------------------------------------------
         # SUPPLEMENTAL IMAGE DOWNLOAD FOR MIXED CAROUSELS
@@ -334,9 +358,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                             except Exception:
                                 pass
 
-        # Find all files starting with job_id
-
-        files = glob.glob(os.path.join(DOWNLOAD_DIR, f"{job_id}*"))
+        files = collect_download_files(job_id, format_choice)
         if not files:
             job["status"] = "error"
             job["error"] = "Download completed but no file was found"

@@ -115,27 +115,33 @@ def get_info():
             uploader = info.get("uploader", "")
             duration = info.get("duration")
             
-            # Build quality options — keep best format per resolution
+            # Build quality options — prefer progressive (video+audio) formats per resolution
             best_by_height = {}
             for f in info.get("formats", []):
                 height = f.get("height")
                 vcodec = f.get("vcodec", "none").lower()
+                acodec = f.get("acodec", "none").lower()
                 if height and vcodec != "none":
                     tbr = f.get("tbr") or 0
                     is_h264 = "avc" in vcodec or "h264" in vcodec
-                    
+                    has_audio = acodec != "none"
+
                     if height not in best_by_height:
                         best_by_height[height] = f
                     else:
                         existing = best_by_height[height]
                         existing_vcodec = existing.get("vcodec", "none").lower()
                         existing_is_h264 = "avc" in existing_vcodec or "h264" in existing_vcodec
-                        
-                        if is_h264 and not existing_is_h264:
+                        existing_has_audio = existing.get("acodec", "none").lower() != "none"
+
+                        if has_audio and not existing_has_audio:
                             best_by_height[height] = f
-                        elif is_h264 == existing_is_h264:
-                            if tbr > (existing.get("tbr") or 0):
+                        elif has_audio == existing_has_audio:
+                            if is_h264 and not existing_is_h264:
                                 best_by_height[height] = f
+                            elif is_h264 == existing_is_h264:
+                                if tbr > (existing.get("tbr") or 0):
+                                    best_by_height[height] = f
 
             for height, f in best_by_height.items():
                 formats.append({
