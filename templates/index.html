@@ -7,6 +7,7 @@
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     :root {
       --bg: #f4f1eb;
@@ -689,6 +690,62 @@
       .controls { flex-wrap: wrap; }
       .fetch-btn { width: 100%; }
     }
+
+    /* Markdown details styling */
+    .blog-detail-body h1, .blog-detail-body h2, .blog-detail-body h3, .blog-detail-body h4 {
+      font-family: 'Instrument Serif', serif;
+      color: var(--fg);
+      margin-top: 28px;
+      margin-bottom: 12px;
+      font-weight: 400;
+      line-height: 1.2;
+    }
+    .blog-detail-body h1 { font-size: 2.2rem; }
+    .blog-detail-body h2 { font-size: 1.8rem; }
+    .blog-detail-body h3 { font-size: 1.5rem; }
+    .blog-detail-body h4 { font-size: 1.2rem; }
+    
+    .blog-detail-body ul, .blog-detail-body ol {
+      margin-left: 24px;
+      margin-bottom: 20px;
+    }
+    .blog-detail-body li {
+      font-size: 0.94rem;
+      line-height: 1.6;
+      margin-bottom: 8px;
+    }
+    .blog-detail-body strong {
+      font-weight: 600;
+    }
+    .blog-detail-body em {
+      font-style: italic;
+    }
+    .blog-detail-body blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 16px;
+      margin: 20px 0;
+      color: var(--muted);
+      font-style: italic;
+    }
+    .blog-detail-body code {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.82rem;
+      background: rgba(26,26,24,0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .blog-detail-body pre {
+      background: rgba(26,26,24,0.04);
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      margin-bottom: 20px;
+    }
+    .blog-detail-body pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 
@@ -856,8 +913,20 @@
             <input type="text" id="editorCategory" class="form-input" required placeholder="Product, How-To, etc.">
           </div>
           <div class="form-group">
-            <label class="form-label">Content (Separate paragraphs with double newlines)</label>
-            <textarea id="editorContent" class="form-input" rows="8" required style="min-height: 150px; font-family: inherit; font-size: 0.82rem;"></textarea>
+            <label class="form-label">Content (Markdown supported)</label>
+            <div class="editor-toolbar" style="display: flex; gap: 8px; margin-bottom: 8px; border: 1.5px solid var(--card-border); border-bottom: none; border-radius: 8px 8px 0 0; padding: 6px; background: rgba(26,26,24,0.02); align-items: center; flex-wrap: wrap;">
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('bold')"><b>B</b></button>
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('italic')"><i>I</i></button>
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('heading')">Heading</button>
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('bullet')">• List</button>
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('number')">1. List</button>
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('link')">Link</button>
+              <button type="button" class="pill" style="padding: 4px 8px; font-size: 0.65rem;" onclick="insertFormat('code')">Code</button>
+              <span style="flex-grow: 1;"></span>
+              <button type="button" id="previewToggleBtn" class="pill" style="padding: 4px 8px; font-size: 0.65rem; background: var(--accent); color: white;" onclick="toggleEditorPreview()">Preview</button>
+            </div>
+            <textarea id="editorContent" class="form-input" rows="8" required style="min-height: 150px; font-family: inherit; font-size: 0.82rem; border-radius: 0 0 8px 8px; margin-top: -9px;"></textarea>
+            <div id="editorPreviewContainer" class="blog-detail-body" style="display: none; min-height: 150px; border: 1.5px solid var(--card-border); border-radius: 0 0 8px 8px; padding: 16px; background: var(--card); margin-top: -9px; overflow-y: auto; max-height: 300px;"></div>
           </div>
           <div id="editorError" class="error-text" style="display: none; margin-bottom: 12px; font-size: 0.72rem; color: var(--error);"></div>
           <div style="display: flex; gap: 10px;">
@@ -905,6 +974,7 @@
   <script>
     let currentFormat = 'video';
     let cardData = [];
+    let activeJobIds = [];
     let cookieMode = 'none';
 
     // Page routing & navigation
@@ -1074,11 +1144,14 @@
           categoryEl.textContent = post.category;
           dateEl.textContent = post.date;
           
+          let markdownContent = '';
           if (Array.isArray(post.content)) {
-            contentEl.innerHTML = post.content.map(p => `<p>${esc(p)}</p>`).join('');
+            markdownContent = post.content.join('\n\n');
           } else {
-            contentEl.innerHTML = `<p>${esc(post.content)}</p>`;
+            markdownContent = post.content || '';
           }
+          const escapedMarkdown = esc(markdownContent);
+          contentEl.innerHTML = typeof marked !== 'undefined' ? marked.parse(escapedMarkdown) : escapedMarkdown;
         } else {
           titleEl.textContent = 'Post Not Found';
           contentEl.innerHTML = `<p style="color:var(--error)">${esc(post.error || 'The requested article could not be found.')}</p>`;
@@ -1167,6 +1240,93 @@
     function cancelEditor() {
       document.getElementById('postEditorContainer').style.display = 'none';
       document.getElementById('editorForm').reset();
+      
+      const textarea = document.getElementById('editorContent');
+      const previewContainer = document.getElementById('editorPreviewContainer');
+      const toggleBtn = document.getElementById('previewToggleBtn');
+      textarea.style.display = 'block';
+      previewContainer.style.display = 'none';
+      if (toggleBtn) {
+        toggleBtn.textContent = 'Preview';
+        toggleBtn.style.background = 'var(--accent)';
+      }
+    }
+
+    function insertFormat(type) {
+      const textarea = document.getElementById('editorContent');
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const text = textarea.value;
+      const selected = text.substring(start, end);
+      
+      let replacement = '';
+      let cursorOffset = 0;
+      
+      switch(type) {
+        case 'bold':
+          replacement = `**${selected || 'bold text'}**`;
+          cursorOffset = selected ? 0 : 2;
+          break;
+        case 'italic':
+          replacement = `*${selected || 'italic text'}*`;
+          cursorOffset = selected ? 0 : 1;
+          break;
+        case 'heading':
+          replacement = `\n### ${selected || 'Heading'}\n`;
+          cursorOffset = selected ? 0 : 4;
+          break;
+        case 'bullet':
+          replacement = `\n- ${selected || 'List item'}\n`;
+          cursorOffset = selected ? 0 : 2;
+          break;
+        case 'number':
+          replacement = `\n1. ${selected || 'List item'}\n`;
+          cursorOffset = selected ? 0 : 3;
+          break;
+        case 'link':
+          replacement = `[${selected || 'Link text'}](https://example.com)`;
+          cursorOffset = selected ? 0 : 1;
+          break;
+        case 'code':
+          replacement = `\`${selected || 'code'}\``;
+          cursorOffset = selected ? 0 : 1;
+          break;
+      }
+      
+      textarea.value = text.substring(0, start) + replacement + text.substring(end);
+      textarea.focus();
+      textarea.setSelectionRange(start + replacement.length - cursorOffset, start + replacement.length - cursorOffset);
+      
+      if (document.getElementById('editorPreviewContainer').style.display === 'block') {
+        updateEditorPreview();
+      }
+    }
+
+    function toggleEditorPreview() {
+      const textarea = document.getElementById('editorContent');
+      const previewContainer = document.getElementById('editorPreviewContainer');
+      const toggleBtn = document.getElementById('previewToggleBtn');
+      
+      if (previewContainer.style.display === 'none') {
+        updateEditorPreview();
+        textarea.style.display = 'none';
+        previewContainer.style.display = 'block';
+        toggleBtn.textContent = 'Edit';
+        toggleBtn.style.background = 'var(--fg)';
+      } else {
+        textarea.style.display = 'block';
+        previewContainer.style.display = 'none';
+        toggleBtn.textContent = 'Preview';
+        toggleBtn.style.background = 'var(--accent)';
+        textarea.focus();
+      }
+    }
+
+    function updateEditorPreview() {
+      const markdownContent = document.getElementById('editorContent').value;
+      const previewContainer = document.getElementById('editorPreviewContainer');
+      const escaped = esc(markdownContent);
+      previewContainer.innerHTML = typeof marked !== 'undefined' ? marked.parse(escaped) : escaped;
     }
 
     async function saveBlogPost(e) {
@@ -1515,7 +1675,7 @@
 
       let fallbackHtml = '';
       if (c.fallbackUsed) {
-        fallbackHtml = `<div class="card-fallback-badge" style="font-size: 0.65rem; color: var(--success); margin-top: 4px; font-weight: 500;">✔ AUTO-APPLIED COOKIE fallback: ${esc(c.fallbackUsed)}</div>`;
+        fallbackHtml = `<div class="card-fallback-badge" style="font-size: 0.65rem; color: var(--success); margin-top: 4px; font-weight: 500;">Done</div>`;
       }
 
       el.innerHTML = `
@@ -1572,6 +1732,7 @@
           return;
         }
         c.jobId = data.job_id;
+        activeJobIds.push(data.job_id);
         pollCard(idx);
       } catch (err) {
         c.status = 'error';
@@ -1617,6 +1778,7 @@
       a.href = `/api/file/${c.jobId}`;
       a.download = c.filename || '';
       a.click();
+      activeJobIds = activeJobIds.filter(id => id !== c.jobId);
     }
 
     async function dlAll() {
@@ -1631,6 +1793,22 @@
 
       if (btn) { btn.disabled = false; btn.textContent = 'Download All'; }
     }
+
+    window.addEventListener('beforeunload', () => {
+      if (activeJobIds.length > 0) {
+        const payload = JSON.stringify({ job_ids: activeJobIds });
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon('/api/cleanup', new Blob([payload], { type: 'application/json' }));
+        } else {
+          fetch('/api/cleanup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: payload,
+            keepalive: true
+          });
+        }
+      }
+    });
   </script>
 </body>
 </html>

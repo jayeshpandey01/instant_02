@@ -10,7 +10,7 @@ import hmac
 import hashlib
 import base64
 from urllib.parse import urlparse
-from flask import Flask, request, jsonify, send_file, render_template
+from flask import Flask, request, jsonify, send_file, render_template, after_this_request
 import yt_dlp
 
 def load_env():
@@ -34,7 +34,10 @@ app = Flask(__name__)
 def get_db_connection():
     db_path = os.environ.get("DATABASE_PATH", "blog.db")
     if not os.path.isabs(db_path):
-        db_path = os.path.join(os.path.dirname(__file__), db_path)
+        if os.environ.get("VERCEL"):
+            db_path = os.path.join("/tmp", db_path)
+        else:
+            db_path = os.path.join(os.path.dirname(__file__), db_path)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -142,6 +145,42 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 jobs = {}
+
+def cleanup_loop():
+    while True:
+        time.sleep(60)
+        try:
+            now = time.time()
+            # Clean up jobs memory dict and physical files
+            for job_id, job in list(jobs.items()):
+                created_at = job.get("created_at", 0)
+                if created_at and (now - created_at) > 900:  # 15 minutes
+                    jobs.pop(job_id, None)
+                    if "file" in job:
+                        try:
+                            if os.path.exists(job["file"]):
+                                os.remove(job["file"])
+                        except Exception:
+                            pass
+            
+            # Also clean up any older files in DOWNLOAD_DIR
+            if os.path.exists(DOWNLOAD_DIR):
+                for filename in os.listdir(DOWNLOAD_DIR):
+                    filepath = os.path.join(DOWNLOAD_DIR, filename)
+                    try:
+                        if os.path.isfile(filepath):
+                            mtime = os.path.getmtime(filepath)
+                            if (now - mtime) > 900:  # 15 minutes
+                                os.remove(filepath)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+t_cleanup = threading.Thread(target=cleanup_loop, daemon=True)
+t_cleanup.start()
+
+
 
 
 def get_cookie_opts(cookies_data, url=None):
@@ -343,19 +382,29 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             "ignore_no_formats_error": True,
         }
 
+        import shutil
+        has_ffmpeg = shutil.which("ffmpeg") is not None
+
         if format_choice == "audio":
             ydl_opts_base["format"] = "bestaudio/best"
-            ydl_opts_base["postprocessors"] = [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }]
+            if has_ffmpeg:
+                ydl_opts_base["postprocessors"] = [{
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "192",
+                }]
         elif format_id:
-            ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
-            ydl_opts_base["merge_output_format"] = "mp4"
+            if has_ffmpeg:
+                ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
+                ydl_opts_base["merge_output_format"] = "mp4"
+            else:
+                ydl_opts_base["format"] = format_id
         else:
-            ydl_opts_base["format"] = "bestvideo+bestaudio/best"
-            ydl_opts_base["merge_output_format"] = "mp4"
+            if has_ffmpeg:
+                ydl_opts_base["format"] = "bestvideo+bestaudio/best"
+                ydl_opts_base["merge_output_format"] = "mp4"
+            else:
+                ydl_opts_base["format"] = "best[ext=mp4]/best"
 
         info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
 
@@ -739,7 +788,7 @@ def start_download():
     cookies_data = data.get("cookies")
 
     job_id = uuid.uuid4().hex[:10]
-    jobs[job_id] = {"status": "downloading", "url": url, "title": title}
+    jobs[job_id] = {"status": "downloading", "url": url, "title": title, "created_at": time.time()}
 
     thread = threading.Thread(
         target=run_download,
@@ -769,7 +818,39 @@ def download_file(job_id):
     job = jobs.get(job_id)
     if not job or job["status"] != "done":
         return jsonify({"error": "File not ready"}), 404
-    return send_file(job["file"], as_attachment=True, download_name=job["filename"])
+    
+    file_path = job["file"]
+    
+    @after_this_request
+    def remove_file(response):
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            jobs.pop(job_id, None)
+        except Exception:
+            pass
+        return response
+
+    return send_file(file_path, as_attachment=True, download_name=job["filename"])
+
+
+@app.route("/api/cleanup", methods=["POST"])
+def cleanup_jobs():
+    data = request.json or {}
+    job_ids = data.get("job_ids", [])
+    cleaned = []
+    for job_id in job_ids:
+        job = jobs.pop(job_id, None)
+        if job and "file" in job:
+            file_path = job["file"]
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                cleaned.append(job_id)
+            except Exception:
+                pass
+    return jsonify({"status": "success", "cleaned": cleaned})
+
 
 
 if __name__ == "__main__":
