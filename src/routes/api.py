@@ -55,6 +55,7 @@ def diagnose_env():
     import subprocess
     
     ffmpeg_sys = shutil.which("ffmpeg")
+    ffprobe_sys = shutil.which("ffprobe")
     ffmpeg_custom = os.path.exists("/tmp/bin/ffmpeg")
     
     version = "unknown"
@@ -67,6 +68,7 @@ def diagnose_env():
     return jsonify({
         "platform": sys.platform,
         "ffmpeg_in_path": ffmpeg_sys,
+        "ffprobe_in_path": ffprobe_sys,
         "ffmpeg_in_tmp": ffmpeg_custom,
         "ffmpeg_version": version,
         "env_path": os.environ.get("PATH", ""),
