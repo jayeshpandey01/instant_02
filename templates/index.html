@@ -3015,8 +3015,8 @@
           const helper = document.getElementById('ios-helper');
           if (helper) {
             document.getElementById('ios-video').src = url;
-            document.getElementById('ios-download-btn').href = url;
-            document.getElementById('ios-download-btn').download = filename || 'download';
+            document.getElementById('ios-download-btn').href = '/api/stream?url=' + encodeURIComponent(url) + '&filename=' + encodeURIComponent(filename || 'download.mp4');
+            document.getElementById('ios-download-btn').removeAttribute('download');
             helper.style.display = 'flex';
             return;
           }

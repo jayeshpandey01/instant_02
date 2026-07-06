@@ -150,3 +150,33 @@ def cobalt_proxy():
                 "message": f"Could not reach Cobalt API: {str(e)}"
             }
         }), 500
+
+@api_bp.route("/api/stream", methods=["GET"])
+def stream_download():
+    target_url = request.args.get("url")
+    filename = request.args.get("filename", "video.mp4")
+    
+    if not target_url:
+        return "Missing URL", 400
+        
+    try:
+        import urllib.request
+        req = urllib.request.Request(target_url, headers={'User-Agent': 'Mozilla/5.0'})
+        remote = urllib.request.urlopen(req, timeout=10)
+        
+        headers = {
+            "Content-Disposition": f"attachment; filename=\"{filename}\"",
+            "Content-Type": remote.headers.get("Content-Type", "application/octet-stream")
+        }
+        
+        def generate():
+            while True:
+                chunk = remote.read(8192)
+                if not chunk:
+                    break
+                yield chunk
+                
+        from flask import Response
+        return Response(generate(), headers=headers)
+    except Exception as e:
+        return str(e), 500
