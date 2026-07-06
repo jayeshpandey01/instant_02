@@ -3,20 +3,20 @@ import time
 import glob
 import shutil
 import re
+import json
+import zipfile
+import requests as req_lib
 from src.config import DOWNLOAD_DIR
 from src.downloader import (
     run_ytdlp_with_fallback,
-    convert_to_ios_compatible_mp4,
     ensure_ffmpeg,
     resolve_instagram_video_format,
     get_format_height,
     prefetch_video_info,
     ensure_video_has_audio,
     collect_download_files,
+    IMAGE_EXTENSIONS,
 )
-
-
-import json
 
 class TrackedDict(dict):
     def __init__(self, data, save_callback):
@@ -141,7 +141,6 @@ def cleanup_loop():
 
 
 def get_image_url_from_entry(entry):
-    from src.downloader import IMAGE_EXTENSIONS
     if not entry:
         return None
     for fmt in sorted(entry.get("formats", []), key=lambda f: f.get("width") or 0, reverse=True):
@@ -183,7 +182,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                     percent_str = d.get("_percent_str")
                     if percent_str:
                         try:
-                            import re
                             clean_percent = re.sub(r'\x1b\[[0-9;]*m', '', percent_str).replace("%", "").strip()
                             job["progress"] = int(float(clean_percent))
                         except Exception:
@@ -218,7 +216,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             if fallback:
                 job["fallback_used"] = used_cookie
 
-            import requests as req_lib
             entries = info.get("entries", []) if (info.get("_type") == "playlist" or "entries" in info) else None
             
             image_targets = []
@@ -260,7 +257,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 return
 
             if len(downloaded_files) > 1:
-                import zipfile
                 zip_path = os.path.join(DOWNLOAD_DIR, f"{job_id}.zip")
                 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                     for idx_f, fp in enumerate(downloaded_files):
@@ -344,7 +340,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         # ---------------------------------------------------------
         if info and (info.get("_type") == "playlist" or "entries" in info):
             entries = info.get("entries", [])
-            import requests as req_lib
             headers = {"User-Agent": "Mozilla/5.0"}
             for i, entry in enumerate(entries):
                 if entry:
@@ -375,16 +370,10 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
 
         # If multiple files are downloaded, zip them
         if len(files) > 1:
-            import zipfile
             zip_filename = f"{job_id}.zip"
             zip_path = os.path.join(DOWNLOAD_DIR, zip_filename)
             
             try:
-                # Transcode files to iOS compatible format before zipping
-                if format_choice != "audio":
-                    job["status"] = "converting"
-                    files = [convert_to_ios_compatible_mp4(f) for f in files]
-                
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, f in enumerate(sorted(files)):
                         base = os.path.basename(f)
@@ -408,9 +397,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         else:
             # Single file download
             chosen = files[0]
-            if format_choice != "audio":
-                job["status"] = "converting"
-                chosen = convert_to_ios_compatible_mp4(chosen)
             ext = os.path.splitext(chosen)[1]
 
         job["status"] = "done"

@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import shutil
 import tempfile
@@ -16,11 +17,6 @@ AUDIO_EXTENSIONS = {".mp3", ".m4a", ".aac", ".opus", ".wav", ".ogg"}
 
 
 def ensure_ffmpeg():
-    import shutil
-    import sys
-    import urllib.request
-    import zipfile
-    
     tmp_bin = "/tmp/bin"
     
     system_ffmpeg = shutil.which("ffmpeg")
@@ -73,9 +69,6 @@ def ensure_ffmpeg():
 
 def _download_ffprobe(tmp_bin):
     """Download ffprobe binary from ffbinaries (packaged separately from ffmpeg)."""
-    import urllib.request
-    import zipfile
-    
     ffprobe_path = os.path.join(tmp_bin, "ffprobe")
     if os.path.exists(ffprobe_path) and os.access(ffprobe_path, os.X_OK):
         return ffprobe_path
@@ -122,7 +115,6 @@ def get_cookie_opts(cookies_data, url=None):
             if os.path.exists(file_path):
                 if os.environ.get("VERCEL"):
                     # Copy to writeable /tmp to prevent Vercel read-only filesystem write errors
-                    import shutil
                     tmp_path = os.path.join("/tmp", safe_name)
                     try:
                         shutil.copy2(file_path, tmp_path)
@@ -231,7 +223,6 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
         if local_cookie_path:
             cookie_path_to_use = local_cookie_path
             if os.environ.get("VERCEL"):
-                import shutil
                 temp_cleanup_path = os.path.join("/tmp", os.path.basename(local_cookie_path))
                 try:
                     shutil.copy2(local_cookie_path, temp_cleanup_path)
@@ -279,7 +270,6 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
                     cookie_path_to_use = local_cookie_path
                     temp_cleanup_path = None
                     if os.environ.get("VERCEL"):
-                        import shutil
                         temp_cleanup_path = os.path.join("/tmp", os.path.basename(local_cookie_path))
                         try:
                             shutil.copy2(local_cookie_path, temp_cleanup_path)
@@ -670,97 +660,6 @@ def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, 
     # Return the files and succeed. We no longer raise "no audio track" error
     # because getting a silent video is better than a download failure.
     return info_retry or info, files, None
-
-
-def needs_transcoding(input_path):
-    import subprocess
-    import shutil
-    if not shutil.which("ffmpeg"):
-        return False
-        
-    cmd = ["ffmpeg", "-i", input_path]
-    try:
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
-        stderr = result.stderr.lower()
-        
-        has_video = "video:" in stderr
-        is_h264 = "video: h264" in stderr or "video: avc" in stderr
-        
-        if has_video and not is_h264:
-            return True
-            
-        has_audio = "audio:" in stderr
-        is_compatible_audio = "audio: aac" in stderr or "audio: mp3" in stderr or "audio: mp4a" in stderr
-        if has_audio and not is_compatible_audio:
-            return True
-            
-        return False
-    except Exception:
-        return True
-
-def convert_to_ios_compatible_mp4(input_path):
-    import subprocess
-    if not shutil.which("ffmpeg"):
-        return input_path
-
-    _, ext = os.path.splitext(input_path)
-    if ext.lower() not in [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".3gp", ".avi"]:
-        return input_path
-
-    target_path = os.path.splitext(input_path)[0] + ".mp4"
-    temp_output = input_path + ".ios.mp4"
-
-    if not needs_transcoding(input_path):
-        # File is already H.264/AAC — just run a fast stream-copy to add faststart moov atom
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", input_path,
-            "-map", "0:v:0?",
-            "-map", "0:a:0?",
-            "-c", "copy",
-            "-movflags", "+faststart",
-            temp_output
-        ]
-    else:
-        # Full transcode to H.264/AAC with faststart
-        cmd = [
-            "ffmpeg", "-y",
-            "-i", input_path,
-            "-map", "0:v:0?",
-            "-map", "0:a:0?",
-            "-c:v", "libx264",
-            "-preset", "ultrafast",
-            "-crf", "23",
-            "-pix_fmt", "yuv420p",
-            "-profile:v", "high",
-            "-level", "4.0",
-            "-c:a", "aac",
-            "-strict", "experimental",
-            "-movflags", "+faststart",
-            temp_output
-        ]
-
-    try:
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        if os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
-            try:
-                os.remove(input_path)
-            except OSError:
-                pass
-            if os.path.exists(target_path) and target_path != temp_output:
-                try:
-                    os.remove(target_path)
-                except OSError:
-                    pass
-            os.rename(temp_output, target_path)
-            return target_path
-    except Exception:
-        if os.path.exists(temp_output):
-            try:
-                os.remove(temp_output)
-            except OSError:
-                pass
-    return input_path
 
 
 IMAGE_EXTENSIONS = {"jpg", "jpeg", "webp", "png", "gif", "avif", "heic"}
