@@ -696,6 +696,29 @@ def detect_media_type(info):
     return "video"
 
 
+def make_friendly_error(err, url):
+    err_lower = err.lower()
+    is_instagram = "instagram.com" in url or "cdninstagram.com" in url
+    is_youtube = "youtube.com" in url or "youtu.be" in url
+    
+    if "404" in err_lower or "not found" in err_lower:
+        if is_instagram:
+            return "Video not found or Instagram blocked the request. Please configure valid cookies in Settings."
+        return "Video not found. Please verify the URL."
+        
+    if "403" in err_lower or "forbidden" in err_lower:
+        if is_instagram:
+            return "Instagram blocked the request (Forbidden). Please configure valid cookies in Settings."
+        if is_youtube:
+            return "YouTube blocked the request (Forbidden). Please configure valid cookies in Settings."
+        return "Access Forbidden by the source website. Please try passing cookies."
+        
+    if "sign in" in err_lower or "login" in err_lower or "confirm you are not a bot" in err_lower:
+        return "Authentication / Bot verification required. Please configure valid cookies in Settings."
+        
+    return err
+
+
 def get_video_codecs(path):
     ffprobe = get_ffprobe_path()
     if not ffprobe or not os.path.isfile(path):

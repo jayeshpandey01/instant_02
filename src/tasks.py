@@ -17,6 +17,7 @@ from src.downloader import (
     collect_download_files,
     IMAGE_EXTENSIONS,
     convert_to_ios_compatible_mp4,
+    make_friendly_error,
 )
 
 class TrackedDict(dict):
@@ -212,7 +213,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             info, used_cookie, fallback, err = run_ytdlp_with_fallback(info_opts, url, cookies_data, download=False)
             if err:
                 job["status"] = "error"
-                job["error"] = err.split("\n")[-1]
+                job["error"] = make_friendly_error(err.split("\n")[-1], url)
                 return
             if fallback:
                 job["fallback_used"] = used_cookie
@@ -304,7 +305,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
 
         if err:
             job["status"] = "error"
-            job["error"] = err.split("\n")[-1]
+            job["error"] = make_friendly_error(err.split("\n")[-1], url)
             return
 
         if fallback:
@@ -322,7 +323,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             )
             if audio_err:
                 job["status"] = "error"
-                job["error"] = audio_err.split("\n")[-1]
+                job["error"] = make_friendly_error(audio_err.split("\n")[-1], url)
                 return
         else:
             files = collect_download_files(job_id, format_choice)

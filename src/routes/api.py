@@ -2,7 +2,7 @@ import os
 from flask import Blueprint, request, jsonify, send_file, after_this_request
 from src.config import DOWNLOAD_DIR, BASE_DIR
 from src.auth import generate_auth_token
-from src.downloader import run_ytdlp_with_fallback, detect_media_type
+from src.downloader import run_ytdlp_with_fallback, detect_media_type, make_friendly_error
 from src.tasks import jobs, run_download
 import threading
 import uuid
@@ -111,7 +111,7 @@ def get_info():
     try:
         info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
         if err:
-            return jsonify({"error": err.split("\n")[-1]}), 400
+            return jsonify({"error": make_friendly_error(err.split("\n")[-1], url)}), 400
 
         # Check if extracted info represents a playlist or carousel
         is_carousel = False
