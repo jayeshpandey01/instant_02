@@ -389,6 +389,11 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
                     return paired
             return f"{fmt_id(selected)}+bestaudio/best"
 
+    dash_videos = [fmt for fmt in formats if is_dash_video(fmt)]
+    paired = pick_dash_pair(dash_videos)
+    if paired:
+        return paired
+
     progressive = sorted(
         [fmt for fmt in formats if is_progressive(fmt)],
         key=lambda fmt: fmt.get("height") or 0,
@@ -399,11 +404,6 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
             matched = [fmt for fmt in progressive if (fmt.get("height") or 0) <= height]
             progressive = matched or progressive
         return fmt_id(progressive[0])
-
-    dash_videos = [fmt for fmt in formats if is_dash_video(fmt)]
-    paired = pick_dash_pair(dash_videos)
-    if paired:
-        return paired
 
     return "bestvideo+bestaudio/best"
 
