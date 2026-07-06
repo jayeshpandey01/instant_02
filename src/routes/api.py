@@ -48,82 +48,66 @@ def list_cookie_files():
         return jsonify({"error": str(e)}), 500
     return jsonify({"files": files})
 
-@api_bp.route("/api/test-ffmpeg")
-def test_ffmpeg_route():
+@api_bp.route("/api/test-ytdlp")
+def test_ytdlp_route():
     import subprocess
     import shutil
     import os
+    import yt_dlp
     
-    ffmpeg = shutil.which("ffmpeg")
-    ffprobe = shutil.which("ffprobe")
+    url = "https://www.instagram.com/reel/DaUitP9oMLH/"
+    cookies_file = os.path.join(BASE_DIR, "www.instagram.com_cookies.txt")
     
-    if not ffmpeg:
-        return jsonify({"error": "ffmpeg not found in PATH"}), 500
-        
-    # Create a small dummy video and audio file
-    v_path = os.path.join(DOWNLOAD_DIR, "dummy_v.mp4")
-    a_path = os.path.join(DOWNLOAD_DIR, "dummy_a.mp4")
-    out_path = os.path.join(DOWNLOAD_DIR, "dummy_merged.mp4")
+    # We will run yt-dlp via subprocess to get all logs
+    cmd = [
+        "yt-dlp",
+        "--verbose",
+        "--no-warnings",
+        "--cookies", cookies_file,
+        "-f", "bestvideo+bestaudio/best",
+        "--merge-output-format", "mp4",
+        "-o", os.path.join(DOWNLOAD_DIR, "test_ytdlp_job.%(ext)s"),
+        url
+    ]
     
-    # Clean up previous dummies
-    for p in (v_path, a_path, out_path):
-        if os.path.exists(p):
-            try: os.remove(p)
+    # Clean up previous test files
+    for f in os.listdir(DOWNLOAD_DIR):
+        if "test_ytdlp_job" in f:
+            try: os.remove(os.path.join(DOWNLOAD_DIR, f))
             except OSError: pass
             
-    # Generate dummy video (1 second silent)
-    v_cmd = [ffmpeg, "-y", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=1", "-c:v", "libx264", v_path]
-    # Generate dummy audio (1 second sine wave)
-    a_cmd = [ffmpeg, "-y", "-f", "lavfi", "-i", "sine=f=440:d=1", "-c:a", "aac", a_path]
-    
     try:
-        r_v = subprocess.run(v_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
-        r_a = subprocess.run(a_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
         
-        if not os.path.exists(v_path) or not os.path.exists(a_path):
-            return jsonify({
-                "error": "Failed to create dummy files",
-                "video_err": r_v.stderr,
-                "audio_err": r_a.stderr
-            }), 500
+        # List files in download dir
+        files = os.listdir(DOWNLOAD_DIR)
+        test_files = [f for f in files if "test_ytdlp_job" in f]
+        
+        file_details = []
+        for f in test_files:
+            p = os.path.join(DOWNLOAD_DIR, f)
+            # Run ffprobe on the file
+            ff_cmd = [
+                "ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name",
+                "-of", "json", p
+            ]
+            r_ff = subprocess.run(ff_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            file_details.append({
+                "filename": f,
+                "size": os.path.getsize(p),
+                "ffprobe": r_ff.stdout.strip()
+            })
             
-        # Try to merge them using manual_merge_video_audio logic
-        merge_cmd = [
-            ffmpeg, "-y",
-            "-i", v_path,
-            "-i", a_path,
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            "-shortest",
-            "-movflags", "+faststart",
-            out_path
-        ]
-        
-        r_m = subprocess.run(merge_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
-        
-        has_merged = os.path.exists(out_path) and os.path.getsize(out_path) > 0
-        
-        # Cleanup
-        for p in (v_path, a_path, out_path):
-            if os.path.exists(p):
-                try: os.remove(p)
-                except OSError: pass
-                
         return jsonify({
-            "ffmpeg": ffmpeg,
-            "ffprobe": ffprobe,
-            "video_created": os.path.exists(v_path),
-            "audio_created": os.path.exists(a_path),
-            "merge_exit_code": r_m.returncode,
-            "merge_success": has_merged,
-            "merge_stdout": r_m.stdout,
-            "merge_stderr": r_m.stderr
+            "exit_code": r.returncode,
+            "stdout": r.stdout,
+            "stderr": r.stderr,
+            "files_found": file_details
         })
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 
