@@ -48,49 +48,83 @@ def list_cookie_files():
         return jsonify({"error": str(e)}), 500
     return jsonify({"files": files})
 
-@api_bp.route("/api/diagnose")
-def diagnose_env():
-    import sys
-    import shutil
+@api_bp.route("/api/test-ffmpeg")
+def test_ffmpeg_route():
     import subprocess
-    import yt_dlp
+    import shutil
+    import os
     
-    ffmpeg_sys = shutil.which("ffmpeg")
-    ffprobe_sys = shutil.which("ffprobe")
-    ffmpeg_custom = os.path.exists("/tmp/bin/ffmpeg")
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
     
-    version = "unknown"
-    if ffmpeg_sys:
-        try:
-            version = subprocess.check_output([ffmpeg_sys, "-version"], text=True).split("\n")[0]
-        except Exception as e:
-            version = f"error: {e}"
+    if not ffmpeg:
+        return jsonify({"error": "ffmpeg not found in PATH"}), 500
+        
+    # Create a small dummy video and audio file
+    v_path = os.path.join(DOWNLOAD_DIR, "dummy_v.mp4")
+    a_path = os.path.join(DOWNLOAD_DIR, "dummy_a.mp4")
+    out_path = os.path.join(DOWNLOAD_DIR, "dummy_merged.mp4")
+    
+    # Clean up previous dummies
+    for p in (v_path, a_path, out_path):
+        if os.path.exists(p):
+            try: os.remove(p)
+            except OSError: pass
             
-    ytdl_ver = getattr(yt_dlp, "__version__", "unknown")
+    # Generate dummy video (1 second silent)
+    v_cmd = [ffmpeg, "-y", "-f", "lavfi", "-i", "color=c=black:s=640x360:d=1", "-c:v", "libx264", v_path]
+    # Generate dummy audio (1 second sine wave)
+    a_cmd = [ffmpeg, "-y", "-f", "lavfi", "-i", "sine=f=440:d=1", "-c:a", "aac", a_path]
     
-    # Test extract
-    test_url = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
-    test_err = None
-    test_formats_count = 0
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "ignore_no_formats_error": False}) as ydl:
-            res = ydl.extract_info(test_url, download=False)
-            test_formats_count = len(res.get("formats", []))
-    except Exception as e:
-        test_err = str(e)
+        r_v = subprocess.run(v_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        r_a = subprocess.run(a_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        
+        if not os.path.exists(v_path) or not os.path.exists(a_path):
+            return jsonify({
+                "error": "Failed to create dummy files",
+                "video_err": r_v.stderr,
+                "audio_err": r_a.stderr
+            }), 500
             
-    return jsonify({
-        "platform": sys.platform,
-        "ffmpeg_in_path": ffmpeg_sys,
-        "ffprobe_in_path": ffprobe_sys,
-        "ffmpeg_in_tmp": ffmpeg_custom,
-        "ffmpeg_version": version,
-        "yt_dlp_version": ytdl_ver,
-        "yt_dlp_test_formats_count": test_formats_count,
-        "yt_dlp_test_error": test_err,
-        "env_path": os.environ.get("PATH", ""),
-        "environ": {k: v for k, v in os.environ.items() if "SECRET" not in k and "PASSWORD" not in k and "KEY" not in k}
-    })
+        # Try to merge them using manual_merge_video_audio logic
+        merge_cmd = [
+            ffmpeg, "-y",
+            "-i", v_path,
+            "-i", a_path,
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-shortest",
+            "-movflags", "+faststart",
+            out_path
+        ]
+        
+        r_m = subprocess.run(merge_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+        
+        has_merged = os.path.exists(out_path) and os.path.getsize(out_path) > 0
+        
+        # Cleanup
+        for p in (v_path, a_path, out_path):
+            if os.path.exists(p):
+                try: os.remove(p)
+                except OSError: pass
+                
+        return jsonify({
+            "ffmpeg": ffmpeg,
+            "ffprobe": ffprobe,
+            "video_created": os.path.exists(v_path),
+            "audio_created": os.path.exists(a_path),
+            "merge_exit_code": r_m.returncode,
+            "merge_success": has_merged,
+            "merge_stdout": r_m.stdout,
+            "merge_stderr": r_m.stderr
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 
 
