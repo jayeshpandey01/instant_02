@@ -16,6 +16,7 @@ from src.downloader import (
     ensure_video_has_audio,
     collect_download_files,
     IMAGE_EXTENSIONS,
+    convert_to_ios_compatible_mp4,
 )
 
 class TrackedDict(dict):
@@ -374,6 +375,11 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             zip_path = os.path.join(DOWNLOAD_DIR, zip_filename)
             
             try:
+                # Transcode files to iOS compatible format before zipping
+                if format_choice != "audio":
+                    job["status"] = "converting"
+                    files = [convert_to_ios_compatible_mp4(f) for f in files]
+                
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, f in enumerate(sorted(files)):
                         base = os.path.basename(f)
@@ -397,6 +403,9 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
         else:
             # Single file download
             chosen = files[0]
+            if format_choice != "audio":
+                job["status"] = "converting"
+                chosen = convert_to_ios_compatible_mp4(chosen)
             ext = os.path.splitext(chosen)[1]
 
         job["status"] = "done"

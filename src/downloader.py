@@ -368,33 +368,25 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
         audio_fmt = max(dash_audios, key=lambda fmt: fmt.get("abr") or fmt.get("tbr") or 0)
         return f"{fmt_id(video_fmt)}+{fmt_id(audio_fmt)}"
 
+    # If a specific format_id was requested, always pair it with DASH audio
+    # (never trust progressive audio from Instagram)
     if format_id:
         selected = next((fmt for fmt in formats if fmt_id(fmt) == str(format_id)), None)
         if selected:
-            if (selected.get("acodec") or "none").lower() != "none":
-                return fmt_id(selected)
             if is_dash_video(selected):
                 paired = pick_dash_pair([selected])
                 if paired:
                     return paired
+            # Even if progressive claims audio, pair with DASH audio for safety
             return f"{fmt_id(selected)}+bestaudio/best"
 
-    progressive = sorted(
-        [fmt for fmt in formats if is_progressive(fmt)],
-        key=lambda fmt: fmt.get("height") or 0,
-        reverse=True,
-    )
-    if progressive:
-        if height:
-            matched = [fmt for fmt in progressive if (fmt.get("height") or 0) <= height]
-            progressive = matched or progressive
-        return fmt_id(progressive[0])
-
+    # Default: pick best DASH video + DASH audio pair
     dash_videos = [fmt for fmt in formats if is_dash_video(fmt)]
     paired = pick_dash_pair(dash_videos)
     if paired:
         return paired
 
+    # Final fallback
     return "bestvideo+bestaudio/best"
 
 
@@ -702,3 +694,126 @@ def detect_media_type(info):
     if all_images and not has_video: return "image"
     if not has_video and has_audio: return "audio_only"
     return "video"
+
+
+def get_video_codecs(path):
+    ffprobe = get_ffprobe_path()
+    if not ffprobe or not os.path.isfile(path):
+        return None, None
+        
+    cmd = [
+        ffprobe, "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "stream=codec_name",
+        "-of", "csv=p=0",
+        path
+    ]
+    try:
+        r_v = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        vcodec = r_v.stdout.strip().lower()
+    except Exception:
+        vcodec = None
+
+    cmd = [
+        ffprobe, "-v", "error",
+        "-select_streams", "a:0",
+        "-show_entries", "stream=codec_name",
+        "-of", "csv=p=0",
+        path
+    ]
+    try:
+        r_a = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        acodec = r_a.stdout.strip().lower()
+    except Exception:
+        acodec = None
+
+    return vcodec, acodec
+
+
+def needs_transcoding(input_path):
+    _, ext = os.path.splitext(input_path)
+    if ext.lower() not in [".mp4", ".m4v", ".mov"]:
+        return True
+        
+    vcodec, acodec = get_video_codecs(input_path)
+    if not vcodec:
+        return False
+        
+    # We need transcoding if video is not h264/avc
+    if "h264" not in vcodec and "avc" not in vcodec:
+        return True
+        
+    # We need transcoding if there is audio and it's not aac/mp3/mp4a
+    if acodec and not any(x in acodec for x in ["aac", "mp3", "mp4a"]):
+        return True
+        
+    return False
+
+
+def convert_to_ios_compatible_mp4(input_path):
+    ffmpeg = ensure_ffmpeg() or shutil.which("ffmpeg")
+    if not ffmpeg or not os.path.isfile(input_path):
+        return input_path
+
+    if not needs_transcoding(input_path):
+        return input_path
+
+    target_path = os.path.splitext(input_path)[0] + ".mp4"
+    temp_output = input_path + ".ios.mp4"
+    has_audio = has_audio_stream(input_path)
+
+    cmd = [
+        ffmpeg, "-y",
+        "-i", input_path,
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-profile:v", "high",
+        "-level", "4.0",
+        "-movflags", "+faststart",
+    ]
+    
+    if has_audio:
+        cmd += [
+            "-map", "0:v:0",
+            "-map", "0:a:0",
+            "-c:a", "aac",
+            "-strict", "experimental"
+        ]
+    else:
+        cmd += [
+            "-map", "0:v:0",
+            "-an"
+        ]
+        
+    cmd.append(temp_output)
+
+    try:
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        if os.path.exists(temp_output) and os.path.getsize(temp_output) > 0:
+            if has_audio and not has_audio_stream(temp_output):
+                print(f"Warning: Transcode stripped audio for {input_path}, reverting to original.")
+                if os.path.exists(temp_output):
+                    os.remove(temp_output)
+                return input_path
+                
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
+            if os.path.exists(target_path) and target_path != temp_output:
+                try:
+                    os.remove(target_path)
+                except OSError:
+                    pass
+            os.rename(temp_output, target_path)
+            return target_path
+    except Exception as e:
+        print(f"Conversion failed: {e}")
+        if os.path.exists(temp_output):
+            try:
+                os.remove(temp_output)
+            except OSError:
+                pass
+    return input_path

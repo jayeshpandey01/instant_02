@@ -53,6 +53,7 @@ def diagnose_env():
     import sys
     import shutil
     import subprocess
+    import yt_dlp
     
     ffmpeg_sys = shutil.which("ffmpeg")
     ffprobe_sys = shutil.which("ffprobe")
@@ -65,12 +66,28 @@ def diagnose_env():
         except Exception as e:
             version = f"error: {e}"
             
+    ytdl_ver = getattr(yt_dlp, "__version__", "unknown")
+    
+    # Test extract
+    test_url = "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+    test_err = None
+    test_formats_count = 0
+    try:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "ignore_no_formats_error": False}) as ydl:
+            res = ydl.extract_info(test_url, download=False)
+            test_formats_count = len(res.get("formats", []))
+    except Exception as e:
+        test_err = str(e)
+            
     return jsonify({
         "platform": sys.platform,
         "ffmpeg_in_path": ffmpeg_sys,
         "ffprobe_in_path": ffprobe_sys,
         "ffmpeg_in_tmp": ffmpeg_custom,
         "ffmpeg_version": version,
+        "yt_dlp_version": ytdl_ver,
+        "yt_dlp_test_formats_count": test_formats_count,
+        "yt_dlp_test_error": test_err,
         "env_path": os.environ.get("PATH", ""),
         "environ": {k: v for k, v in os.environ.items() if "SECRET" not in k and "PASSWORD" not in k and "KEY" not in k}
     })
@@ -293,3 +310,4 @@ def cleanup_jobs():
                 pass
     return jsonify({"status": "success", "cleaned": cleaned})
 
+# when you run test_formate it change the cookies it tested with downloading video its works
