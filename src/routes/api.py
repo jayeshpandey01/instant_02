@@ -48,61 +48,41 @@ def list_cookie_files():
         return jsonify({"error": str(e)}), 500
     return jsonify({"files": files})
 
-@api_bp.route("/api/test-ytdlp")
-def test_ytdlp_route():
-    import subprocess
-    import shutil
-    import os
+@api_bp.route("/api/test-metadata")
+def test_metadata_route():
     import yt_dlp
+    import os
     
     url = "https://www.instagram.com/reel/DaUitP9oMLH/"
     cookies_file = os.path.join(BASE_DIR, "www.instagram.com_cookies.txt")
     
-    # We will run yt-dlp via subprocess to get all logs
-    cmd = [
-        "yt-dlp",
-        "--verbose",
-        "--no-warnings",
-        "--cookies", cookies_file,
-        "-f", "bestvideo+bestaudio/best",
-        "--merge-output-format", "mp4",
-        "-o", os.path.join(DOWNLOAD_DIR, "test_ytdlp_job.%(ext)s"),
-        url
-    ]
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "cookiefile": cookies_file,
+    }
     
-    # Clean up previous test files
-    for f in os.listdir(DOWNLOAD_DIR):
-        if "test_ytdlp_job" in f:
-            try: os.remove(os.path.join(DOWNLOAD_DIR, f))
-            except OSError: pass
-            
     try:
-        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
-        
-        # List files in download dir
-        files = os.listdir(DOWNLOAD_DIR)
-        test_files = [f for f in files if "test_ytdlp_job" in f]
-        
-        file_details = []
-        for f in test_files:
-            p = os.path.join(DOWNLOAD_DIR, f)
-            # Run ffprobe on the file
-            ff_cmd = [
-                "ffprobe", "-v", "error", "-show_entries", "stream=codec_type,codec_name",
-                "-of", "json", p
-            ]
-            r_ff = subprocess.run(ff_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            file_details.append({
-                "filename": f,
-                "size": os.path.getsize(p),
-                "ffprobe": r_ff.stdout.strip()
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            
+        # Extract formats with keys we care about
+        fmts = []
+        for f in info.get("formats", []):
+            fmts.append({
+                "format_id": f.get("format_id"),
+                "ext": f.get("ext"),
+                "height": f.get("height"),
+                "vcodec": f.get("vcodec"),
+                "acodec": f.get("acodec"),
+                "url": f.get("url") is not None
             })
             
         return jsonify({
-            "exit_code": r.returncode,
-            "stdout": r.stdout,
-            "stderr": r.stderr,
-            "files_found": file_details
+            "title": info.get("title"),
+            "uploader": info.get("uploader"),
+            "formats": fmts,
+            "url_in_info": info.get("url") is not None
         })
         
     except Exception as e:
