@@ -292,20 +292,11 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 }]
             info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
         else:
-            meta, used_cookie, fallback, err = prefetch_video_info(url, cookies_data)
-            if err:
-                job["status"] = "error"
-                job["error"] = err.split("\n")[-1]
-                return
-            if fallback:
-                job["fallback_used"] = used_cookie
+            if format_id:
+                ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
+            else:
+                ydl_opts_base["format"] = "bestvideo+bestaudio/best"
 
-            selected_height = get_format_height(meta, format_id)
-            ydl_opts_base["format"] = resolve_instagram_video_format(
-                meta,
-                format_id=format_id,
-                height=selected_height,
-            )
             if has_ffmpeg:
                 ydl_opts_base["merge_output_format"] = "mp4"
 
@@ -325,9 +316,9 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 url,
                 cookies_data,
                 ydl_opts_base,
-                info=info or meta,
+                info=info,
                 format_id=format_id,
-                height=get_format_height(info or meta, format_id),
+                height=get_format_height(info, format_id) if info else None,
             )
             if audio_err:
                 job["status"] = "error"
