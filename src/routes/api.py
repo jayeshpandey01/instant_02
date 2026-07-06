@@ -83,7 +83,18 @@ def cobalt_proxy():
                     video_url = get_ytdlp_url()
                 except Exception:
                     # Fallback to cookies if it's private or requires login
-                    video_url = get_ytdlp_url(os.path.join(BASE_DIR, 'www.instagram.com_cookies.txt'))
+                    cookie_path = os.path.join(BASE_DIR, 'www.instagram.com_cookies.txt')
+                    
+                    # On Vercel, load cookies from environment variable into a temp file
+                    if os.environ.get("VERCEL") and os.environ.get("INSTAGRAM_COOKIES"):
+                        cookie_path = "/tmp/instagram_cookies.txt"
+                        if not os.path.exists(cookie_path):
+                            with open(cookie_path, "w") as f:
+                                # Vercel env vars sometimes replace newlines with spaces, so we parse properly
+                                cookies_raw = os.environ.get("INSTAGRAM_COOKIES").replace("\\t", "\t").replace("\\n", "\n")
+                                f.write(cookies_raw)
+                    
+                    video_url = get_ytdlp_url(cookie_path)
                     
                 if video_url:
                     # Determine filename
