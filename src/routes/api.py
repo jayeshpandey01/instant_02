@@ -123,7 +123,8 @@ def cobalt_proxy():
                     req = urllib.request.Request(data.get("url"), headers={'User-Agent': 'Mozilla/5.0'})
                     html = urllib.request.urlopen(req, timeout=5).read().decode('utf-8')
                     images = re.findall(r'<meta property="og:image" content="(.*?)"', html)
-                    if images and "og:video" not in html:
+                    # Only fallback to image if there's no video tag AND it's not explicitly a reel URL
+                    if images and "og:video" not in html and "/reel/" not in data.get("url", "").lower():
                         image_url = images[0].replace("&amp;", "&")
                         # Prevent returning the generic Instagram logo if redirected to login
                         if "static.cdninstagram.com/rsrc.php" not in image_url:
