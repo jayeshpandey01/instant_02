@@ -125,17 +125,19 @@ def cobalt_proxy():
                     images = re.findall(r'<meta property="og:image" content="(.*?)"', html)
                     if images and "og:video" not in html:
                         image_url = images[0].replace("&amp;", "&")
-                        # Generate a safe default name for the image
-                        safe_id = re.search(r'/(?:p|reel)/([^/?]+)', data.get("url", ""))
-                        video_id = safe_id.group(1) if safe_id else "image"
-                        return jsonify({
-                            "status": "tunnel",
-                            "url": image_url,
-                            "filename": f"instagram_{video_id}.jpg"
-                        }), 200
+                        # Prevent returning the generic Instagram logo if redirected to login
+                        if "static.cdninstagram.com/rsrc.php" not in image_url:
+                            # Generate a safe default name for the image
+                            safe_id = re.search(r'/(?:p|reel)/([^/?]+)', data.get("url", ""))
+                            video_id = safe_id.group(1) if safe_id else "image"
+                            return jsonify({
+                                "status": "tunnel",
+                                "url": image_url,
+                                "filename": f"instagram_{video_id}.jpg"
+                            }), 200
                 except Exception as image_e:
                     print("Image fallback failed:", str(image_e))
-                pass # Fall back to returning the Cobalt JPG/Error if all fallbacks fail
+                pass # Fall back to returning the Cobalt Error if all fallbacks fail
         
         return jsonify(json_resp), response.status_code
     except Exception as e:
