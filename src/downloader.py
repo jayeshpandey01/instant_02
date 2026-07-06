@@ -776,9 +776,17 @@ def needs_transcoding(input_path):
         
     vcodec, acodec = get_video_codecs(input_path)
     
-    # We only need transcoding if there is audio and it's not aac/mp3/mp4a
-    if acodec and not any(x in acodec for x in ["aac", "mp3", "mp4a"]):
-        return True
+    # Check video codec compatibility on iOS.
+    # iOS Safari/Photos players require H.264 (avc1) or HEVC (h265/hevc) video.
+    # If the video has a different codec (like vp9, av1/av01, vp8), it must be transcoded.
+    if has_video_stream(input_path):
+        if vcodec and not any(compat in vcodec for compat in ["h264", "avc", "hevc", "h265", "mpeg4"]):
+            return True
+        
+    # Check audio codec compatibility
+    if has_audio_stream(input_path):
+        if acodec and not any(x in acodec for x in ["aac", "mp3", "mp4a"]):
+            return True
         
     return False
 
@@ -795,27 +803,58 @@ def convert_to_ios_compatible_mp4(input_path):
     temp_output = input_path + ".ios.mp4"
     has_audio = has_audio_stream(input_path)
 
-    # Use video stream copy (-c:v copy) to make conversion virtually instantaneous (under 1s).
-    # We only transcode the audio track to AAC if present, which takes almost zero CPU.
+    vcodec, acodec = get_video_codecs(input_path)
+    
+    # Check if we need to transcode the video track to libx264
+    transcode_video = False
+    if has_video_stream(input_path):
+        transcode_video = vcodec and not any(compat in vcodec for compat in ["h264", "avc", "hevc", "h265", "mpeg4"])
+
+    # Check if we need to transcode the audio track to aac
+    transcode_audio = False
+    if has_audio:
+        transcode_audio = acodec and not any(x in acodec for x in ["aac", "mp3", "mp4a"])
+
     cmd = [
         ffmpeg, "-y",
         "-i", input_path,
-        "-c:v", "copy",
-        "-movflags", "+faststart",
     ]
-    
+
+    # Video stream options
+    if transcode_video:
+        cmd += [
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-preset", "superfast",
+            "-crf", "23"
+        ]
+    else:
+        cmd += [
+            "-c:v", "copy"
+        ]
+
+    cmd += ["-movflags", "+faststart"]
+
+    # Audio stream options and mapping
     if has_audio:
         cmd += [
             "-map", "0:v:0",
-            "-map", "0:a:0",
-            "-c:a", "aac",
-            "-strict", "experimental"
+            "-map", "0:a:0"
         ]
+        if transcode_audio:
+            cmd += [
+                "-c:a", "aac",
+                "-strict", "experimental"
+            ]
+        else:
+            cmd += [
+                "-c:a", "copy"
+            ]
     else:
         cmd += [
             "-map", "0:v:0"
         ]
-        
+
     cmd.append(temp_output)
 
     try:
