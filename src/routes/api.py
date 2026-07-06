@@ -90,6 +90,7 @@ def get_info():
         "quiet": True,
         "no_warnings": True,
         "ignore_no_formats_error": True,
+        "format_sort": ["res:1080", "ext:mp4:m4a", "vcodec:h264"]
     }
     try:
         info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
@@ -193,6 +194,7 @@ def get_playlist_info():
         "extract_flat": "in_playlist",
         "quiet": True,
         "no_warnings": True,
+        "format_sort": ["res:1080", "ext:mp4:m4a", "vcodec:h264"]
     }
     try:
         info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)

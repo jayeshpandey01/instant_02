@@ -371,11 +371,23 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
         if height:
             matched = [fmt for fmt in video_formats if (fmt.get("height") or 0) <= height]
             video_formats = matched or video_formats
+        else:
+            matched = [fmt for fmt in video_formats if (fmt.get("height") or 0) <= 1080]
+            video_formats = matched or video_formats
+            
+        avc_formats = [fmt for fmt in video_formats if "avc" in (fmt.get("vcodec") or "none").lower() or "h264" in (fmt.get("vcodec") or "none").lower()]
+        video_formats = avc_formats or video_formats
+            
         dash_audios = [fmt for fmt in formats if is_dash_audio(fmt)]
         if not video_formats or not dash_audios:
             return None
+            
         video_fmt = max(video_formats, key=lambda fmt: fmt.get("height") or 0)
+        
+        mp4a_audios = [fmt for fmt in dash_audios if "mp4a" in (fmt.get("acodec") or "none").lower() or "aac" in (fmt.get("acodec") or "none").lower()]
+        dash_audios = mp4a_audios or dash_audios
         audio_fmt = max(dash_audios, key=lambda fmt: fmt.get("abr") or fmt.get("tbr") or 0)
+        
         return f"{fmt_id(video_fmt)}+{fmt_id(audio_fmt)}"
 
     if format_id:
@@ -403,9 +415,16 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
         if height:
             matched = [fmt for fmt in progressive if (fmt.get("height") or 0) <= height]
             progressive = matched or progressive
+        else:
+            matched = [fmt for fmt in progressive if (fmt.get("height") or 0) <= 1080]
+            progressive = matched or progressive
+            
+        avc_formats = [fmt for fmt in progressive if "avc" in (fmt.get("vcodec") or "none").lower() or "h264" in (fmt.get("vcodec") or "none").lower()]
+        progressive = avc_formats or progressive
+        
         return fmt_id(progressive[0])
 
-    return "bestvideo+bestaudio/best"
+    return "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best"
 
 
 def build_video_format_string(format_id=None, has_ffmpeg=True, height=None, info=None):
@@ -420,7 +439,7 @@ def build_video_format_string(format_id=None, has_ffmpeg=True, height=None, info
         safe_id = str(format_id)
         return f"{safe_id}+bestaudio/best"
 
-    return "bestvideo+bestaudio/best"
+    return "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best"
 
 
 def _ffprobe_streams(input_path, stream_type):
@@ -626,7 +645,7 @@ def prefetch_video_info(url, cookies_data):
 def build_instagram_retry_format(info, format_id=None, height=None):
     if format_id:
         return f"{format_id}+bestaudio/best"
-    return "bestvideo+bestaudio/best"
+    return "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best"
 
 
 def has_audio_in_metadata(info):

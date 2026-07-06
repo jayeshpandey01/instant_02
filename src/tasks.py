@@ -198,6 +198,7 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             "no_warnings": True,
             "ignore_no_formats_error": True,
             "progress_hooks": [progress_hook],
+            "format_sort": ["res:1080", "ext:mp4:m4a", "vcodec:h264"]
         }
 
         ensure_ffmpeg()
