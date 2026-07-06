@@ -2941,14 +2941,31 @@
       `;
       }
 
-      function triggerDownload(url, filename) {
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename || '';
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+      async function triggerDownload(url, filename) {
+        try {
+          // Attempt to fetch the file as a Blob to force a true download
+          const response = await fetch(url);
+          if (!response.ok) throw new Error("Network response was not ok");
+          const blob = await response.blob();
+          const blobUrl = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.style.display = 'none';
+          a.href = blobUrl;
+          a.download = filename || 'download';
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(blobUrl);
+          document.body.removeChild(a);
+        } catch (e) {
+          console.warn('Blob download failed (likely CORS), falling back to new tab', e);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename || 'download';
+          a.target = '_blank';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }
       }
     </script>
 </body>
