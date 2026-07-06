@@ -1,0 +1,21 @@
+{
+  "name": "reclip",
+  "version": "1.0.0",
+  "description": "A self-hosted, open-source video and audio downloader with a clean web UI. Paste links from YouTube, TikTok, Instagram, Twitter/X, and 1000+ other sites — download as MP4 or MP3.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jayeshpandey01/instant_02.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/jayeshpandey01/instant_02/issues"
+  },
+  "homepage": "https://github.com/jayeshpandey01/instant_02#readme"
+}
