@@ -437,7 +437,10 @@ def has_audio_stream(input_path):
     result = _ffprobe_streams(input_path, "a")
     if result is None:
         # ffprobe unavailable — assume audio exists (optimistic) to avoid
-        # discarding valid files or triggering false "no audio" errors
+        # discarding valid files or triggering false "no audio" errors.
+        # Logged so a missing/broken ffprobe on a deployed server is visible
+        # instead of silently masking real no-audio downloads.
+        print(f"WARNING: ffprobe unavailable, cannot verify audio for {input_path}")
         return True
     return result
 
@@ -606,9 +609,10 @@ def prefetch_video_info(url, cookies_data):
 
 
 def build_instagram_retry_format(info, format_id=None, height=None):
-    if format_id:
-        return f"{format_id}+bestaudio/best"
-    return "bestvideo+bestaudio/best"
+    """Kept for backward compatibility. Delegates to the real Instagram-aware
+    resolver so the retry path actually pairs the correct DASH audio track
+    instead of blindly trusting yt-dlp's generic 'bestaudio' alias."""
+    return resolve_instagram_video_format(info, format_id=format_id, height=height)
 
 
 def has_audio_in_metadata(info):

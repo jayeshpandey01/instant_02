@@ -293,7 +293,27 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 }]
             info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
         else:
-            if format_id:
+            is_instagram = "instagram.com" in url or "cdninstagram.com" in url
+
+            if is_instagram:
+                # Instagram's DASH manifests confuse yt-dlp's generic
+                # "bestaudio" alias — prefetch info and pair the exact
+                # video format with the correct DASH audio track up front,
+                # instead of discovering the problem only after a silent
+                # download and relying on the retry path to fix it.
+                prefetch_info, _, _, prefetch_err = prefetch_video_info(url, cookies_data)
+                if prefetch_err or not prefetch_info:
+                    # Fall back to the naive selector; ensure_video_has_audio
+                    # below will still retry properly if this misses audio.
+                    ydl_opts_base["format"] = (
+                        f"{format_id}+bestaudio/best" if format_id else "bestvideo+bestaudio/best"
+                    )
+                else:
+                    height = get_format_height(prefetch_info, format_id) if format_id else None
+                    ydl_opts_base["format"] = resolve_instagram_video_format(
+                        prefetch_info, format_id=format_id, height=height
+                    )
+            elif format_id:
                 ydl_opts_base["format"] = f"{format_id}+bestaudio/best"
             else:
                 ydl_opts_base["format"] = "bestvideo+bestaudio/best"
@@ -424,4 +444,3 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
     except Exception as e:
         job["status"] = "error"
         job["error"] = str(e)
-
