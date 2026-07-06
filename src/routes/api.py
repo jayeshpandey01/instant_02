@@ -32,7 +32,7 @@ def admin_login():
 @api_bp.route("/api/cookie-files")
 def list_cookie_files():
     files = []
-    root_dir = os.path.dirname(__file__)
+    root_dir = BASE_DIR
     try:
         for name in os.listdir(root_dir):
             if name.endswith(".txt") and os.path.isfile(os.path.join(root_dir, name)):

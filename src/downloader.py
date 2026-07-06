@@ -251,6 +251,18 @@ def run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False):
         except Exception as e:
             error_msg = str(e)
             
+            # Fallback: if we attempted with cookies and failed, try downloading WITHOUT cookies as a fail-safe
+            if cookie_opts.get("cookiefile") or cookie_opts.get("cookiesfrombrowser"):
+                ydl_opts_no_cookies = augment_ytdlp_opts({**ydl_opts_base, "logger": logger_to_use})
+                ydl_opts_no_cookies.pop("cookiefile", None)
+                ydl_opts_no_cookies.pop("cookiesfrombrowser", None)
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts_no_cookies) as ydl_no_cookies:
+                        info_no_cookies = ydl_no_cookies.extract_info(url, download=download)
+                        return info_no_cookies, None, False, None
+                except Exception:
+                    pass
+            
             needs_auth = (
                 "sign in" in error_msg.lower() or
                 "login" in error_msg.lower() or
