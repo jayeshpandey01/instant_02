@@ -759,14 +759,8 @@ def needs_transcoding(input_path):
         return True
         
     vcodec, acodec = get_video_codecs(input_path)
-    if not vcodec:
-        return False
-        
-    # We need transcoding if video is not h264/avc
-    if "h264" not in vcodec and "avc" not in vcodec:
-        return True
-        
-    # We need transcoding if there is audio and it's not aac/mp3/mp4a
+    
+    # We only need transcoding if there is audio and it's not aac/mp3/mp4a
     if acodec and not any(x in acodec for x in ["aac", "mp3", "mp4a"]):
         return True
         
@@ -785,15 +779,12 @@ def convert_to_ios_compatible_mp4(input_path):
     temp_output = input_path + ".ios.mp4"
     has_audio = has_audio_stream(input_path)
 
+    # Use video stream copy (-c:v copy) to make conversion virtually instantaneous (under 1s).
+    # We only transcode the audio track to AAC if present, which takes almost zero CPU.
     cmd = [
         ffmpeg, "-y",
         "-i", input_path,
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "23",
-        "-pix_fmt", "yuv420p",
-        "-profile:v", "high",
-        "-level", "4.0",
+        "-c:v", "copy",
         "-movflags", "+faststart",
     ]
     
@@ -806,8 +797,7 @@ def convert_to_ios_compatible_mp4(input_path):
         ]
     else:
         cmd += [
-            "-map", "0:v:0",
-            "-an"
+            "-map", "0:v:0"
         ]
         
     cmd.append(temp_output)
