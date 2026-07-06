@@ -2845,6 +2845,9 @@
             } else if (data.status === 'error') {
               cardData[idx] = { ...cardData[idx], status: 'info-error', error: data.error?.code || 'Cobalt API Error' };
               renderCard(idx);
+            } else if (data.status === 'rate-limit') {
+              cardData[idx] = { ...cardData[idx], status: 'info-error', error: 'Rate limit exceeded. Please wait a minute.' };
+              renderCard(idx);
             } else if (data.status === 'picker') {
               if (data.picker && data.picker.length > 0) {
                 // First item replaces the current card
