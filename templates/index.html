@@ -2957,14 +2957,32 @@
           window.URL.revokeObjectURL(blobUrl);
           document.body.removeChild(a);
         } catch (e) {
-          console.warn('Blob download failed (likely CORS), falling back to new tab', e);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename || 'download';
-          a.target = '_blank';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
+          console.warn('Blob download failed (likely CORS). Attempting proxy...', e);
+          try {
+            // Try fetching through a CORS proxy if the direct fetch failed
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error("Proxy response was not ok");
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = blobUrl;
+            a.download = filename || 'download';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(blobUrl);
+            document.body.removeChild(a);
+          } catch (proxyError) {
+            console.error('All automatic download methods failed. Opening in new tab.', proxyError);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename || 'download';
+            a.target = '_blank';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
         }
       }
     </script>
