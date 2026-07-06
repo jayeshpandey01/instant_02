@@ -8,8 +8,8 @@ from src.downloader import (
     run_ytdlp_with_fallback,
     convert_to_ios_compatible_mp4,
     ensure_ffmpeg,
-    resolve_instagram_video_format,
-    get_format_height,
+    build_format_string,
+    _is_instagram_info,
     prefetch_video_info,
     ensure_video_has_audio,
     collect_download_files,
@@ -198,7 +198,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
             "no_warnings": True,
             "ignore_no_formats_error": True,
             "progress_hooks": [progress_hook],
-            "format_sort": ["res:1080", "ext:mp4:m4a", "vcodec:h264"]
         }
 
         ensure_ffmpeg()
@@ -296,20 +295,33 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 }]
             info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=True)
         else:
-            meta, used_cookie, fallback, err = prefetch_video_info(url, cookies_data)
-            if err:
-                job["status"] = "error"
-                job["error"] = err.split("\n")[-1]
-                return
-            if fallback:
-                job["fallback_used"] = used_cookie
+            # For Instagram, we need to prefetch info to detect DASH formats
+            # and build the right format string. For other sites, skip prefetch.
+            is_instagram = "instagram.com" in url or "cdninstagram.com" in url
 
-            selected_height = get_format_height(meta, format_id)
-            ydl_opts_base["format"] = resolve_instagram_video_format(
-                meta,
-                format_id=format_id,
-                height=selected_height,
-            )
+            if is_instagram:
+                meta, used_cookie, fallback, err = prefetch_video_info(url, cookies_data)
+                if err:
+                    job["status"] = "error"
+                    job["error"] = err.split("\n")[-1]
+                    return
+                if fallback:
+                    job["fallback_used"] = used_cookie
+
+                ydl_opts_base["format"] = build_format_string(
+                    url=url,
+                    format_id=format_id,
+                    has_ffmpeg=has_ffmpeg,
+                    info=meta,
+                )
+            else:
+                # Non-Instagram: use simple format string, no prefetch needed
+                ydl_opts_base["format"] = build_format_string(
+                    url=url,
+                    format_id=format_id,
+                    has_ffmpeg=has_ffmpeg,
+                )
+
             if has_ffmpeg:
                 ydl_opts_base["merge_output_format"] = "mp4"
 
@@ -331,7 +343,6 @@ def run_download(job_id, url, format_choice, format_id, cookies_data=None):
                 ydl_opts_base,
                 info=info or meta,
                 format_id=format_id,
-                height=get_format_height(info or meta, format_id),
             )
             if audio_err:
                 job["status"] = "error"

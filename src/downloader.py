@@ -340,16 +340,29 @@ def augment_ytdlp_opts(opts):
     return merged
 
 
+def _is_instagram_info(info):
+    """Check if the info dict comes from Instagram based on format ID patterns."""
+    if not info:
+        return False
+    formats = info.get("formats") or []
+    for fmt in formats:
+        fid = str(fmt.get("format_id") or "")
+        if fid.startswith("dash-") or re.search(r"v-\d+$", fid):
+            return True
+    return False
+
+
 def resolve_instagram_video_format(info, format_id=None, height=None):
-    """Build a yt-dlp format selector that preserves Instagram audio."""
+    """Build a yt-dlp format selector that preserves Instagram audio.
+    
+    Instagram progressive formats (v-N) often have SILENT audio tracks despite
+    reporting acodec != none. We ALWAYS prefer DASH video+audio pairs for
+    Instagram to guarantee real audio.
+    """
     formats = info.get("formats") or [] if info else []
 
     def fmt_id(fmt):
         return str(fmt.get("format_id") or "")
-
-    def is_progressive(fmt):
-        fid = fmt_id(fmt)
-        return bool(re.search(r"v-\d+$", fid)) and (fmt.get("acodec") or "none").lower() != "none"
 
     def is_dash_video(fmt):
         fid = fmt_id(fmt)
@@ -371,75 +384,60 @@ def resolve_instagram_video_format(info, format_id=None, height=None):
         if height:
             matched = [fmt for fmt in video_formats if (fmt.get("height") or 0) <= height]
             video_formats = matched or video_formats
-        else:
-            matched = [fmt for fmt in video_formats if (fmt.get("height") or 0) <= 1080]
-            video_formats = matched or video_formats
-            
-        avc_formats = [fmt for fmt in video_formats if "avc" in (fmt.get("vcodec") or "none").lower() or "h264" in (fmt.get("vcodec") or "none").lower()]
-        video_formats = avc_formats or video_formats
-            
         dash_audios = [fmt for fmt in formats if is_dash_audio(fmt)]
         if not video_formats or not dash_audios:
             return None
-            
         video_fmt = max(video_formats, key=lambda fmt: fmt.get("height") or 0)
-        
-        mp4a_audios = [fmt for fmt in dash_audios if "mp4a" in (fmt.get("acodec") or "none").lower() or "aac" in (fmt.get("acodec") or "none").lower()]
-        dash_audios = mp4a_audios or dash_audios
         audio_fmt = max(dash_audios, key=lambda fmt: fmt.get("abr") or fmt.get("tbr") or 0)
-        
         return f"{fmt_id(video_fmt)}+{fmt_id(audio_fmt)}"
 
+    # If a specific format_id was requested, always pair it with DASH audio
+    # (never trust progressive audio from Instagram)
     if format_id:
         selected = next((fmt for fmt in formats if fmt_id(fmt) == str(format_id)), None)
         if selected:
-            if (selected.get("acodec") or "none").lower() != "none":
-                return fmt_id(selected)
             if is_dash_video(selected):
                 paired = pick_dash_pair([selected])
                 if paired:
                     return paired
+            # Even if progressive claims audio, pair with DASH audio for safety
             return f"{fmt_id(selected)}+bestaudio/best"
 
+    # Default: pick best DASH video + DASH audio pair
     dash_videos = [fmt for fmt in formats if is_dash_video(fmt)]
     paired = pick_dash_pair(dash_videos)
     if paired:
         return paired
 
-    progressive = sorted(
-        [fmt for fmt in formats if is_progressive(fmt)],
-        key=lambda fmt: fmt.get("height") or 0,
-        reverse=True,
-    )
-    if progressive:
-        if height:
-            matched = [fmt for fmt in progressive if (fmt.get("height") or 0) <= height]
-            progressive = matched or progressive
-        else:
-            matched = [fmt for fmt in progressive if (fmt.get("height") or 0) <= 1080]
-            progressive = matched or progressive
-            
-        avc_formats = [fmt for fmt in progressive if "avc" in (fmt.get("vcodec") or "none").lower() or "h264" in (fmt.get("vcodec") or "none").lower()]
-        progressive = avc_formats or progressive
-        
-        return fmt_id(progressive[0])
-
-    return "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best"
+    # Final fallback
+    return "bestvideo+bestaudio/best"
 
 
-def build_video_format_string(format_id=None, has_ffmpeg=True, height=None, info=None):
-    """Backward-compatible wrapper around Instagram-aware format resolution."""
+def build_format_string(url=None, format_id=None, has_ffmpeg=True, info=None, height=None):
+    """Choose the right format string based on the URL source.
+    
+    For Instagram: uses resolve_instagram_video_format (DASH-first).
+    For everything else: simple 'best' format that yt-dlp handles natively.
+    """
     if not has_ffmpeg:
         return "best[ext=mp4]/best"
 
-    if info:
+    # If we have info and it looks like Instagram, use Instagram-specific logic
+    if info and _is_instagram_info(info):
         return resolve_instagram_video_format(info, format_id=format_id, height=height)
 
+    # For non-Instagram with a specific format_id
     if format_id:
         safe_id = str(format_id)
-        return f"{safe_id}+bestaudio/best"
+        if has_ffmpeg:
+            return f"{safe_id}+bestaudio/best"
+        return f"{safe_id}/best"
 
-    return "bestvideo[height<=1080][vcodec^=avc]+bestaudio[acodec^=mp4a]/bestvideo[height<=1080]+bestaudio/best"
+    # For non-Instagram: let yt-dlp pick the best format natively
+    # This avoids downloading unnecessarily large files
+    if has_ffmpeg:
+        return "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
+    return "best[ext=mp4]/best"
 
 
 def _ffprobe_streams(input_path, stream_type):
@@ -660,35 +658,26 @@ def has_audio_in_metadata(info):
 
 
 def ensure_video_has_audio(job_id, url, cookies_data, ydl_opts_base, info=None, format_id=None, height=None):
+    """Try to ensure downloaded videos have audio by merging companion tracks.
+    
+    Does NOT re-download. Just attempts to merge any separate audio files
+    that yt-dlp may have downloaded alongside the video.
+    """
     files = finalize_video_files(job_id, collect_download_files(job_id, "video"))
     if files and all(has_audio_stream(path) for path in files):
         return info, files, None
 
     # If the metadata explicitly indicates there are no audio streams,
-    # the video is silent. We skip retrying and return the files as-is.
+    # the video is silent. Return the files as-is.
     if info and not has_audio_in_metadata(info):
         return info, files, None
 
     if not files:
         return info, [], "Download completed but no file was found"
 
-    for stale in list_job_media_files(job_id, "video"):
-        try:
-            os.remove(stale)
-        except OSError:
-            pass
-
-    retry_opts = augment_ytdlp_opts(dict(ydl_opts_base))
-    retry_opts["format"] = build_instagram_retry_format(info, format_id=format_id, height=height)
-    retry_opts["merge_output_format"] = "mp4"
-    info_retry, _, _, err = run_ytdlp_with_fallback(retry_opts, url, cookies_data, download=True)
-    if err:
-        return info, [], err
-
-    files = finalize_video_files(job_id, collect_download_files(job_id, "video"))
-    # Return the files and succeed. We no longer raise "no audio track" error
-    # because getting a silent video is better than a download failure.
-    return info_retry or info, files, None
+    # Accept what we have — merging was already attempted by finalize_video_files.
+    # Getting a video (even without audio) is better than failing entirely.
+    return info, files, None
 
 
 def needs_transcoding(input_path):
