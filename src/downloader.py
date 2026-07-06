@@ -519,6 +519,7 @@ def manual_merge_video_audio(video_path, audio_path):
     merged_path = os.path.splitext(video_path)[0] + "_merged.mp4"
     cmd = [
         ffmpeg, "-y",
+        "-threads", "1",
         "-i", video_path,
         "-i", audio_path,
         "-map", "0:v:0",
@@ -787,7 +788,28 @@ def needs_transcoding(input_path):
     if has_audio_stream(input_path):
         if acodec and not any(x in acodec for x in ["aac", "mp3", "mp4a"]):
             return True
-        
+    return False
+
+
+def safe_remove(path, retries=5, delay=0.1):
+    for i in range(retries):
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+            return True
+        except OSError:
+            time.sleep(delay)
+    return False
+
+def safe_rename(src, dest, retries=5, delay=0.1):
+    for i in range(retries):
+        try:
+            if os.path.exists(dest):
+                safe_remove(dest, retries=1, delay=0)
+            os.rename(src, dest)
+            return True
+        except OSError:
+            time.sleep(delay)
     return False
 
 
@@ -817,6 +839,7 @@ def convert_to_ios_compatible_mp4(input_path):
 
     cmd = [
         ffmpeg, "-y",
+        "-threads", "1",
         "-i", input_path,
     ]
 
@@ -825,7 +848,7 @@ def convert_to_ios_compatible_mp4(input_path):
         cmd += [
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
-            "-preset", "superfast",
+            "-preset", "ultrafast",
             "-crf", "23"
         ]
     else:
@@ -866,17 +889,11 @@ def convert_to_ios_compatible_mp4(input_path):
                     os.remove(temp_output)
                 return input_path
                 
-            try:
-                os.remove(input_path)
-            except OSError:
-                pass
-            if os.path.exists(target_path) and target_path != temp_output:
-                try:
-                    os.remove(target_path)
-                except OSError:
-                    pass
-            os.rename(temp_output, target_path)
-            return target_path
+            safe_remove(input_path)
+            if target_path != temp_output:
+                safe_remove(target_path)
+            if safe_rename(temp_output, target_path):
+                return target_path
     except Exception as e:
         print(f"Conversion failed: {e}")
         if os.path.exists(temp_output):
