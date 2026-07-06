@@ -2832,27 +2832,36 @@
             } else if (data.status === 'picker') {
               if (data.picker && data.picker.length > 0) {
                 // First item replaces the current card
+                const firstFName = 'download_1_' + (data.picker[0].type === 'video' ? 'mp4' : 'jpg');
                 cardData[idx] = {
                   url: url,
                   status: 'done',
                   title: (data.picker[0].type === 'video' ? 'Video' : 'Photo') + ' 1',
-                  filename: 'download_1_' + (data.picker[0].type === 'video' ? 'mp4' : 'jpg'),
+                  filename: firstFName,
                   downloadUrl: data.picker[0].url,
                   thumbUrl: data.picker[0].thumb
                 };
                 renderCard(idx);
+                triggerDownload(data.picker[0].url, firstFName);
+
                 // Add remaining items as new cards
                 for (let j = 1; j < data.picker.length; j++) {
                   const newIdx = cardData.length;
+                  const fName = 'download_' + (j + 1) + '_' + (data.picker[j].type === 'video' ? 'mp4' : 'jpg');
                   cardData.push({
                     url: url,
                     status: 'done',
                     title: (data.picker[j].type === 'video' ? 'Video ' : 'Photo ') + (j + 1),
-                    filename: 'download_' + (j + 1) + '_' + (data.picker[j].type === 'video' ? 'mp4' : 'jpg'),
+                    filename: fName,
                     downloadUrl: data.picker[j].url,
                     thumbUrl: data.picker[j].thumb
                   });
                   renderCard(newIdx);
+                  
+                  // Add a small delay between multiple downloads to avoid browser block
+                  setTimeout(() => {
+                    triggerDownload(data.picker[j].url, fName);
+                  }, j * 600);
                 }
               } else {
                 cardData[idx] = { ...cardData[idx], status: 'info-error', error: 'Empty picker returned.' };
