@@ -2942,12 +2942,46 @@
       }
 
       async function triggerDownload(url, filename) {
+        let finalBlob = null;
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
         try {
-          // Attempt to fetch the file as a Blob to force a true download
+          // Attempt to fetch the file directly as a Blob
           const response = await fetch(url);
           if (!response.ok) throw new Error("Network response was not ok");
-          const blob = await response.blob();
-          const blobUrl = window.URL.createObjectURL(blob);
+          finalBlob = await response.blob();
+        } catch (e) {
+          console.warn('Blob download failed (likely CORS). Attempting proxy...', e);
+          try {
+            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error("Proxy response was not ok");
+            finalBlob = await response.blob();
+          } catch (proxyError) {
+            console.error('All Blob fetch methods failed.', proxyError);
+          }
+        }
+
+        if (finalBlob) {
+          // If we are on iOS, try using the native Share sheet to allow "Save Video" to camera roll
+          if (isIOS && navigator.canShare) {
+            const file = new File([finalBlob], filename || 'download.mp4', { type: finalBlob.type || 'video/mp4' });
+            if (navigator.canShare({ files: [file] })) {
+              try {
+                await navigator.share({
+                  files: [file],
+                  title: 'Save your file'
+                });
+                return; // Successfully shared/saved
+              } catch (shareErr) {
+                console.log("Share sheet cancelled or failed", shareErr);
+                // Fallthrough to normal blob download
+              }
+            }
+          }
+
+          // Normal desktop/Android blob download
+          const blobUrl = window.URL.createObjectURL(finalBlob);
           const a = document.createElement('a');
           a.style.display = 'none';
           a.href = blobUrl;
@@ -2956,34 +2990,21 @@
           a.click();
           window.URL.revokeObjectURL(blobUrl);
           document.body.removeChild(a);
-        } catch (e) {
-          console.warn('Blob download failed (likely CORS). Attempting proxy...', e);
-          try {
-            // Try fetching through a CORS proxy if the direct fetch failed
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error("Proxy response was not ok");
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = blobUrl;
-            a.download = filename || 'download';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(blobUrl);
-            document.body.removeChild(a);
-          } catch (proxyError) {
-            console.error('All automatic download methods failed. Opening in new tab.', proxyError);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename || 'download';
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-          }
+          return;
         }
+
+        // Ultimate fallback: open in new tab
+        if (isIOS) {
+          alert("iPhone Tip: When the video opens, tap the 'Share' icon (square with an up arrow) and select 'Save to Files' to download it!");
+        }
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'download';
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       }
     </script>
 </body>
