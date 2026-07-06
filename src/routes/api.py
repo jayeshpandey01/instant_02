@@ -1,22 +1,14 @@
 import os
-from flask import Blueprint, request, jsonify, send_file, after_this_request
-from src.config import DOWNLOAD_DIR, BASE_DIR
+from flask import Blueprint, request, jsonify
+from src.config import BASE_DIR
 from src.auth import generate_auth_token
-from src.downloader import run_ytdlp_with_fallback, detect_media_type, make_friendly_error
-from src.tasks import jobs, run_download
-import threading
-import uuid
-import shutil
-import glob
-import re
-import time
+import requests
 
 api_bp = Blueprint("api", __name__)
 
-
 @api_bp.route("/api/admin/login", methods=["POST"])
 def admin_login():
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     email = data.get("email")
     password = data.get("password")
     
@@ -32,11 +24,10 @@ def admin_login():
 @api_bp.route("/api/cookie-files")
 def list_cookie_files():
     files = []
-    root_dir = BASE_DIR
     try:
-        for name in os.listdir(root_dir):
-            if name.endswith(".txt") and os.path.isfile(os.path.join(root_dir, name)):
-                file_path = os.path.join(root_dir, name)
+        for name in os.listdir(BASE_DIR):
+            if name.endswith(".txt") and os.path.isfile(os.path.join(BASE_DIR, name)):
+                file_path = os.path.join(BASE_DIR, name)
                 try:
                     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                         first_line = f.readline()
@@ -48,264 +39,100 @@ def list_cookie_files():
         return jsonify({"error": str(e)}), 500
     return jsonify({"files": files})
 
-@api_bp.route("/api/test-metadata")
-def test_metadata_route():
-    import yt_dlp
-    import os
+
+@api_bp.route("/api/cobalt", methods=["POST"])
+def cobalt_proxy():
+    data = request.get_json(silent=True) or {}
     
-    url = "https://www.instagram.com/reel/DaUitP9oMLH/"
-    cookies_file = os.path.join(BASE_DIR, "www.instagram.com_cookies.txt")
-    
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "cookiefile": cookies_file,
-    }
+    # Use localtunnel by default, fallback to direct local API if testing without localtunnel
+    cobalt_url = os.environ.get("COBALT_URL", "http://127.0.0.1:9000/")
     
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-        # Extract formats with keys we care about
-        fmts = []
-        for f in info.get("formats", []):
-            fmts.append({
-                "format_id": f.get("format_id"),
-                "ext": f.get("ext"),
-                "height": f.get("height"),
-                "vcodec": f.get("vcodec"),
-                "acodec": f.get("acodec"),
-                "url": f.get("url") is not None
-            })
-            
-        return jsonify({
-            "title": info.get("title"),
-            "uploader": info.get("uploader"),
-            "formats": fmts,
-            "url_in_info": info.get("url") is not None
-        })
+        # Forward the payload to the Cobalt server
+        response = requests.post(
+            cobalt_url,
+            json=data,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Bypass-Tunnel-Reminder": "true",
+                "User-Agent": "reclip-proxy/1.0"
+            },
+            timeout=30  # Give it some time just in case
+        )
         
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-
-
-
-@api_bp.route("/api/info", methods=["POST"])
-def get_info():
-    data = request.json
-    url = data.get("url", "").strip()
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    cookies_data = data.get("cookies")
-    ydl_opts_base = {
-        "noplaylist": False,
-        "quiet": True,
-        "no_warnings": True,
-        "ignore_no_formats_error": True,
-    }
-    try:
-        info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
-        if err:
-            return jsonify({"error": make_friendly_error(err.split("\n")[-1], url)}), 400
-
-        # Check if extracted info represents a playlist or carousel
-        is_carousel = False
-        item_count = 0
-        formats = []
+        json_resp = response.json()
         
-        if info.get("_type") == "playlist" or "entries" in info:
-            is_carousel = True
-            entries = info.get("entries", [])
-            item_count = len(entries)
-            
-            first_entry = entries[0] if entries else {}
-            title = info.get("title") or first_entry.get("title") or "Gallery Post"
-            thumbnail = info.get("thumbnail") or first_entry.get("thumbnail") or ""
-            uploader = info.get("uploader") or first_entry.get("uploader") or ""
-            duration = info.get("duration") or first_entry.get("duration")
-        else:
-            title = info.get("title", "")
-            thumbnail = info.get("thumbnail", "")
-            uploader = info.get("uploader", "")
-            duration = info.get("duration")
-            
-            # Build quality options — prefer progressive Instagram formats that include audio
-            best_by_height = {}
-            for f in info.get("formats", []):
-                height = f.get("height")
-                vcodec = f.get("vcodec", "none").lower()
-                acodec = f.get("acodec", "none").lower()
-                format_id = str(f.get("format_id") or "")
-                if height and vcodec != "none":
-                    # Hide DASH video-only rows; backend resolves dash+a audio pairs on download
-                    if acodec == "none" and format_id.startswith("dash-") and format_id.endswith("v"):
-                        continue
+        # Smart fallback for Instagram: If Cobalt couldn't find the video and returns a .jpg OR an error
+        is_instagram = "instagram.com" in data.get("url", "").lower()
+        is_jpg = json_resp.get("status") == "tunnel" and (json_resp.get("filename", "").endswith(".jpg") or json_resp.get("filename", "").endswith(".jpeg"))
+        is_error = json_resp.get("status") == "error"
 
-                    tbr = f.get("tbr") or 0
-                    is_h264 = "avc" in vcodec or "h264" in vcodec
-                    has_audio = acodec != "none"
-                    is_progressive = bool(re.search(r"v-\d+$", format_id))
-
-                    if height not in best_by_height:
-                        best_by_height[height] = f
-                    else:
-                        existing = best_by_height[height]
-                        existing_vcodec = existing.get("vcodec", "none").lower()
-                        existing_is_h264 = "avc" in existing_vcodec or "h264" in existing_vcodec
-                        existing_has_audio = existing.get("acodec", "none").lower() != "none"
-                        existing_is_progressive = bool(re.search(r"v-\d+$", str(existing.get("format_id") or "")))
-
-                        if is_progressive and not existing_is_progressive:
-                            best_by_height[height] = f
-                        elif is_progressive == existing_is_progressive:
-                            if has_audio and not existing_has_audio:
-                                best_by_height[height] = f
-                            elif has_audio == existing_has_audio:
-                                if is_h264 and not existing_is_h264:
-                                    best_by_height[height] = f
-                                elif is_h264 == existing_is_h264:
-                                    if tbr > (existing.get("tbr") or 0):
-                                        best_by_height[height] = f
-
-            for height, f in best_by_height.items():
-                formats.append({
-                    "id": f["format_id"],
-                    "label": f"{height}p",
-                    "height": height,
-                })
-            formats.sort(key=lambda x: x["height"], reverse=True)
-
-        media_type = detect_media_type(info)
-
-        res_data = {
-            "title": title,
-            "media_type": media_type,
-            "thumbnail": thumbnail,
-            "duration": duration,
-            "uploader": uploader,
-            "formats": formats,
-            "is_carousel": is_carousel,
-            "item_count": item_count,
-        }
-        if fallback:
-            res_data["fallback_used"] = used_cookie
-        return jsonify(res_data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@api_bp.route("/api/playlist-info", methods=["POST"])
-def get_playlist_info():
-    data = request.json
-    url = data.get("url", "").strip()
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    cookies_data = data.get("cookies")
-    ydl_opts_base = {
-        "extract_flat": "in_playlist",
-        "quiet": True,
-        "no_warnings": True,
-    }
-    try:
-        info, used_cookie, fallback, err = run_ytdlp_with_fallback(ydl_opts_base, url, cookies_data, download=False)
-        if err:
-            return jsonify({"error": err.split("\n")[-1]}), 400
-
-        entries = info.get("entries", [])
-        urls = [entry.get("url") for entry in entries if entry.get("url")]
-        res_data = {"urls": urls}
-        if fallback:
-            res_data["fallback_used"] = used_cookie
-        return jsonify(res_data)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
-
-@api_bp.route("/api/download", methods=["POST"])
-def start_download():
-    data = request.json
-    url = data.get("url", "").strip()
-    format_choice = data.get("format", "video")
-    format_id = data.get("format_id")
-    title = data.get("title", "")
-
-    if not url:
-        return jsonify({"error": "No URL provided"}), 400
-
-    cookies_data = data.get("cookies")
-
-    job_id = uuid.uuid4().hex[:10]
-    jobs[job_id] = {"status": "downloading", "url": url, "title": title, "created_at": time.time()}
-
-    thread = threading.Thread(
-        target=run_download,
-        args=(job_id, url, format_choice, format_id, cookies_data)
-    )
-    thread.daemon = True
-    thread.start()
-
-    return jsonify({"job_id": job_id})
-
-@api_bp.route("/api/status/<job_id>")
-def check_status(job_id):
-    job = jobs.get(job_id)
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
-    return jsonify({
-        "status": job["status"],
-        "error": job.get("error"),
-        "filename": job.get("filename"),
-        "fallback_used": job.get("fallback_used"),
-        "progress": job.get("progress", 0),
-    })
-
-@api_bp.route("/api/file/<job_id>")
-def download_file(job_id):
-    job = jobs.get(job_id)
-    if not job or job["status"] != "done":
-        return jsonify({"error": "File not ready"}), 404
-
-    file_path = job["file"]
-    filename = job["filename"]
-
-    # Determine the correct MIME type for iOS compatibility
-    _, ext = os.path.splitext(filename)
-    if ext.lower() in [".mp4", ".m4v", ".mov"]:
-        mimetype = "video/mp4"
-    elif ext.lower() == ".mp3":
-        mimetype = "audio/mpeg"
-    elif ext.lower() == ".zip":
-        mimetype = "application/zip"
-    else:
-        mimetype = None
-
-    response = send_file(
-        file_path,
-        as_attachment=True,
-        download_name=filename,
-        conditional=True,     # Enables HTTP 206 Partial Content + Range request support (required by iOS Safari)
-        mimetype=mimetype,
-    )
-    response.headers["Accept-Ranges"] = "bytes"
-    return response
-
-@api_bp.route("/api/cleanup", methods=["POST"])
-def cleanup_jobs():
-    data = request.json or {}
-    job_ids = data.get("job_ids", [])
-    cleaned = []
-    for job_id in job_ids:
-        job = jobs.pop(job_id, None)
-        if job and "file" in job:
-            file_path = job["file"]
+        if is_instagram and (is_jpg or is_error):
             try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                cleaned.append(job_id)
-            except Exception:
-                pass
-    return jsonify({"status": "success", "cleaned": cleaned})
+                import yt_dlp
+                def get_ytdlp_url(cookiefile=None):
+                    opts = {'format': 'best', 'quiet': True, 'no_warnings': True}
+                    if cookiefile: opts['cookiefile'] = cookiefile
+                    with yt_dlp.YoutubeDL(opts) as ydl:
+                        return ydl.extract_info(data.get("url"), download=False).get('url')
+                
+                video_url = None
+                try:
+                    # Try without cookies first (avoids 404 for public posts if cookies are bad)
+                    video_url = get_ytdlp_url()
+                except Exception:
+                    # Fallback to cookies if it's private or requires login
+                    video_url = get_ytdlp_url(os.path.join(BASE_DIR, 'www.instagram.com_cookies.txt'))
+                    
+                if video_url:
+                    # Determine filename
+                    filename = json_resp.get("filename", "")
+                    if not filename or not (filename.endswith(".jpg") or filename.endswith(".jpeg")):
+                        # Generate a safe default name if missing or not a replaceable image name
+                        import re
+                        safe_id = re.search(r'/(?:p|reel)/([^/?]+)', data.get("url", ""))
+                        video_id = safe_id.group(1) if safe_id else "video"
+                        filename = f"instagram_{video_id}.mp4"
+                    else:
+                        filename = filename.replace(".jpg", ".mp4").replace(".jpeg", ".mp4")
 
-# when you run test_formate it change the cookies it tested with downloading video its works
+                    # Replace the Cobalt response with the yt-dlp direct URL
+                    return jsonify({
+                        "status": "tunnel",
+                        "url": video_url,
+                        "filename": filename
+                    }), 200
+            except Exception as ytdlp_e:
+                print("yt-dlp fallback failed:", str(ytdlp_e))
+                # Final fallback for image-only posts where yt-dlp fails because there is no video
+                try:
+                    import urllib.request
+                    import re
+                    req = urllib.request.Request(data.get("url"), headers={'User-Agent': 'Mozilla/5.0'})
+                    html = urllib.request.urlopen(req, timeout=5).read().decode('utf-8')
+                    images = re.findall(r'<meta property="og:image" content="(.*?)"', html)
+                    if images and "og:video" not in html:
+                        image_url = images[0].replace("&amp;", "&")
+                        # Generate a safe default name for the image
+                        safe_id = re.search(r'/(?:p|reel)/([^/?]+)', data.get("url", ""))
+                        video_id = safe_id.group(1) if safe_id else "image"
+                        return jsonify({
+                            "status": "tunnel",
+                            "url": image_url,
+                            "filename": f"instagram_{video_id}.jpg"
+                        }), 200
+                except Exception as image_e:
+                    print("Image fallback failed:", str(image_e))
+                pass # Fall back to returning the Cobalt JPG/Error if all fallbacks fail
+        
+        return jsonify(json_resp), response.status_code
+    except Exception as e:
+        # We explicitly format this as a Cobalt-style error so the frontend parses it correctly
+        return jsonify({
+            "status": "error",
+            "error": {
+                "code": "proxy_error",
+                "message": f"Could not reach Cobalt API: {str(e)}"
+            }
+        }), 500

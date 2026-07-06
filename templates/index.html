@@ -2786,64 +2786,86 @@
         container.innerHTML = '';
         cardData = [];
 
-        const cookies = getCookieSettings();
-
-        // Check if youtube playlist URL
-        for (let i = 0; i < urls.length; i++) {
-          if (urls[i].includes('list=')) {
-            const res = await fetch('/api/playlist', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url: urls[i], cookies }),
-            });
-            const data = await res.json();
-            if (data.urls) {
-              // replace playlist URL with individual video URLs
-              urls.splice(i, 1, ...data.urls);
-            }
-          }
-        }
-
         for (let i = 0; i < urls.length; i++) {
           const url = urls[i];
           const idx = cardData.length;
           cardData.push({ url, status: 'loading' });
           renderCard(idx);
 
+          // Prepare Cobalt request
+          const isAudio = currentFormat === 'audio';
+          const payload = {
+            url: url,
+            videoQuality: "1080",
+            downloadMode: isAudio ? "audio" : "auto",
+            filenameStyle: "basic"
+          };
+
+          if (isAudio) {
+            payload.audioFormat = "mp3";
+          }
+
           try {
-            const res = await fetch('/api/info', {
+            const res = await fetch('/api/cobalt', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ url, cookies }),
+              headers: { 
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify(payload),
             });
             const data = await res.json();
-            if (data.error) {
-              cardData[idx] = { ...cardData[idx], status: 'info-error', error: data.error };
-            } else {
+            
+            if (data.status === 'tunnel' || data.status === 'redirect') {
               cardData[idx] = {
-                ...cardData[idx],
-                status: 'ready',
-                title: data.title || '',
-                thumbnail: data.thumbnail || '',
-                duration: data.duration,
-                uploader: data.uploader || '',
-                formats: data.formats || [],
-                selectedFormatId: data.formats?.[0]?.id || null,
-                fallbackUsed: data.fallback_used || null,
-                isCarousel: data.is_carousel || false,
-                itemCount: data.item_count || 0,
-                mediaType: data.media_type || 'video',
-                isImage: data.media_type === 'image',
+                url: url,
+                status: 'done',
+                title: data.filename || 'Media Download',
+                filename: data.filename || 'download',
+                downloadUrl: data.url
               };
+              renderCard(idx);
+              triggerDownload(data.url, data.filename);
+            } else if (data.status === 'error') {
+              cardData[idx] = { ...cardData[idx], status: 'info-error', error: data.error?.code || 'Cobalt API Error' };
+              renderCard(idx);
+            } else if (data.status === 'picker') {
+              if (data.picker && data.picker.length > 0) {
+                // First item replaces the current card
+                cardData[idx] = {
+                  url: url,
+                  status: 'done',
+                  title: (data.picker[0].type === 'video' ? 'Video' : 'Photo') + ' 1',
+                  filename: 'download_1_' + (data.picker[0].type === 'video' ? 'mp4' : 'jpg'),
+                  downloadUrl: data.picker[0].url,
+                  thumbUrl: data.picker[0].thumb
+                };
+                renderCard(idx);
+                // Add remaining items as new cards
+                for (let j = 1; j < data.picker.length; j++) {
+                  const newIdx = cardData.length;
+                  cardData.push({
+                    url: url,
+                    status: 'done',
+                    title: (data.picker[j].type === 'video' ? 'Video ' : 'Photo ') + (j + 1),
+                    filename: 'download_' + (j + 1) + '_' + (data.picker[j].type === 'video' ? 'mp4' : 'jpg'),
+                    downloadUrl: data.picker[j].url,
+                    thumbUrl: data.picker[j].thumb
+                  });
+                  renderCard(newIdx);
+                }
+              } else {
+                cardData[idx] = { ...cardData[idx], status: 'info-error', error: 'Empty picker returned.' };
+                renderCard(idx);
+              }
+            } else {
+              cardData[idx] = { ...cardData[idx], status: 'info-error', error: 'Unsupported response from Cobalt' };
+              renderCard(idx);
             }
           } catch (err) {
-            cardData[idx] = { ...cardData[idx], status: 'info-error', error: err.message };
+            cardData[idx] = { ...cardData[idx], status: 'info-error', error: 'Could not connect to Cobalt API' };
+            renderCard(idx);
           }
-          renderCard(idx);
-        }
-
-        if (cardData.filter(c => c.status === 'ready').length > 1) {
-          renderDownloadAll();
         }
 
         btn.disabled = false;
@@ -2860,7 +2882,6 @@
           document.getElementById('cards').appendChild(el);
         }
 
-        // Loading skeleton
         if (c.status === 'loading') {
           el.className = 'card';
           el.innerHTML = `
@@ -2873,7 +2894,6 @@
           return;
         }
 
-        // Error state
         if (c.status === 'info-error') {
           el.className = 'card card-error';
           el.innerHTML = `
@@ -2883,7 +2903,7 @@
             </div>
           </div>
           <div class="card-body">
-            <div class="card-title" style="color:var(--error)">Could not fetch video</div>
+            <div class="card-title" style="color:var(--error)">Download Failed</div>
             <div class="card-error-msg">${esc(friendlyError(c.error || ''))}</div>
             <div class="card-error-url">${esc(c.url)}</div>
           </div>
@@ -2891,193 +2911,36 @@
           return;
         }
 
-        // Ready / downloading / done / error states
         el.className = 'card';
-        const isAudio = currentFormat === 'audio';
-
-        let thumbHtml;
-        if (isAudio) {
-          thumbHtml = `<div class="no-thumb" style="color:var(--accent)"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`;
-        } else if (c.isImage) {
-          // Image post: show the thumbnail as an actual <img> (or image icon)
-          if (c.thumbnail) {
-            thumbHtml = `<img src="${c.thumbnail}" alt="" style="object-fit:contain;background:#0a0c1a;">`;
-          } else {
-            thumbHtml = `<div class="no-thumb" style="color:var(--secondary)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>`;
-          }
-        } else if (c.thumbnail) {
-          thumbHtml = `<img src="${c.thumbnail}" alt="">`;
-        } else {
-          thumbHtml = `<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>`;
-        }
-
-        let qualityChips = '';
-        if (c.isCarousel) {
-          qualityChips = `<span class="carousel-badge" style="font-size: 0.65rem; background: var(--accent); color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 8px;">📷 Gallery (${c.itemCount} items)</span>`;
-        } else if (c.isImage) {
-          qualityChips = `<span class="carousel-badge" style="font-size: 0.65rem; background: var(--secondary); color: #fff; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; margin-left: 8px;">🖼️ Image</span>`;
-        } else if (!isAudio && c.formats && c.formats.length > 1) {
-          qualityChips = c.formats.map(f =>
-            `<button class="q-chip${f.id === c.selectedFormatId ? ' active' : ''}" onclick="pickFormat(${idx}, '${f.id}')">${f.label}</button>`
-          ).join('');
-        }
-
+        const thumbHtml = c.thumbUrl 
+          ? `<img src="${esc(c.thumbUrl)}" style="width:100%; height:100%; object-fit:cover; border-radius:12px;" />`
+          : `<div class="no-thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8" cy="8" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></div>`;
+        
         let actionHtml = '';
-        if (c.status === 'ready') {
-          const dlLabel = c.isCarousel ? 'Download Gallery' : c.isImage ? 'Download Image' : 'Download';
-          actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">${dlLabel}</button>${qualityChips}`;
-        } else if (c.status === 'downloading') {
-          const pct = c.progress !== undefined ? ` ${c.progress}%` : '';
-          actionHtml = `<span class="card-status downloading"><span class="spin"></span> Downloading...${pct}</span>`;
-        } else if (c.status === 'done') {
-          actionHtml = `<a class="card-dl-btn done" href="/api/file/${c.jobId}" download="${esc(c.filename || '')}" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Save</a>
+        if (c.status === 'done') {
+          actionHtml = `<a class="card-dl-btn done" href="${c.downloadUrl}" target="_blank" download="${esc(c.filename || '')}" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center;">Save</a>
           <span class="card-status done">${esc(c.filename || '')}</span>`;
-        } else if (c.status === 'error') {
-          actionHtml = `<button class="card-dl-btn" onclick="dlCard(${idx})">Retry</button>
-          <span class="card-status error">${esc(friendlyError(c.error || 'Download failed'))}</span>`;
-        }
-
-        let fallbackHtml = '';
-        if (c.fallbackUsed) {
-          fallbackHtml = `<div class="card-fallback-badge" style="font-size: 0.65rem; color: var(--success); margin-top: 4px; font-weight: 500;">Done</div>`;
         }
 
         el.innerHTML = `
         <div class="card-thumb">${thumbHtml}</div>
         <div class="card-body">
           <div class="card-title">${esc(c.title || 'Untitled')}</div>
-          <div class="card-meta">${esc(c.uploader)}${c.duration ? ' · ' + fmtDur(c.duration) : ''}${fallbackHtml}</div>
+          <div class="card-meta">Processed by Cobalt API</div>
           <div class="card-actions">${actionHtml}</div>
         </div>
       `;
       }
 
-      function renderDownloadAll() {
-        const existing = document.getElementById('dl-all-bar');
-        if (existing) existing.remove();
-
-        const bar = document.createElement('div');
-        bar.id = 'dl-all-bar';
-        bar.className = 'dl-all-bar';
-        bar.innerHTML = `<button class="dl-all-btn" onclick="dlAll()">Download All</button>`;
-        document.getElementById('cards').appendChild(bar);
-      }
-
-      function pickFormat(idx, formatId) {
-        cardData[idx].selectedFormatId = formatId;
-        renderCard(idx);
-      }
-
-      async function dlCard(idx) {
-        const c = cardData[idx];
-        c.status = 'downloading';
-        c.error = null;
-        renderCard(idx);
-
-        const cookies = getCookieSettings();
-
-        try {
-          const res = await fetch('/api/download', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              url: c.url,
-              format: c.isImage ? 'image' : currentFormat,
-              format_id: c.isImage ? null : c.selectedFormatId,
-              title: c.title || '',
-              cookies: cookies,
-            }),
-          });
-          const data = await res.json();
-          if (data.error) {
-            c.status = 'error';
-            c.error = data.error;
-            renderCard(idx);
-            return;
-          }
-          c.jobId = data.job_id;
-          activeJobIds.push(data.job_id);
-          pollCard(idx);
-        } catch (err) {
-          c.status = 'error';
-          c.error = err.message;
-          renderCard(idx);
-        }
-      }
-
-      function pollCard(idx) {
-        const c = cardData[idx];
-        const iv = setInterval(async () => {
-          try {
-            const res = await fetch(`/api/status/${c.jobId}`);
-            const data = await res.json();
-            if (data.status === 'downloading') {
-              c.progress = data.progress || 0;
-              renderCard(idx);
-            } else if (data.status === 'done') {
-              clearInterval(iv);
-              c.status = 'done';
-              c.filename = data.filename;
-              if (data.fallback_used) {
-                c.fallbackUsed = data.fallback_used;
-              }
-              renderCard(idx);
-              saveCard(idx);
-            } else if (data.status === 'error') {
-              clearInterval(iv);
-              c.status = 'error';
-              c.error = data.error;
-              renderCard(idx);
-            }
-          } catch {
-            clearInterval(iv);
-            c.status = 'error';
-            c.error = 'Lost connection to server';
-            renderCard(idx);
-          }
-        }, 1000);
-      }
-
-      function saveCard(idx) {
-        const c = cardData[idx];
-        if (!c.jobId) return;
+      function triggerDownload(url, filename) {
         const a = document.createElement('a');
-        a.href = `/api/file/${c.jobId}`;
-        a.download = c.filename || '';
+        a.href = url;
+        a.download = filename || '';
+        a.target = '_blank';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        activeJobIds = activeJobIds.filter(id => id !== c.jobId);
       }
-
-      async function dlAll() {
-        const btn = document.querySelector('.dl-all-btn');
-        if (btn) { btn.disabled = true; btn.textContent = 'Downloading...'; }
-
-        for (let i = 0; i < cardData.length; i++) {
-          if (cardData[i].status === 'ready') {
-            await dlCard(i);
-          }
-        }
-
-        if (btn) { btn.disabled = false; btn.textContent = 'Download All'; }
-      }
-
-      window.addEventListener('beforeunload', () => {
-        if (activeJobIds.length > 0) {
-          const payload = JSON.stringify({ job_ids: activeJobIds });
-          if (navigator.sendBeacon) {
-            navigator.sendBeacon('/api/cleanup', new Blob([payload], { type: 'application/json' }));
-          } else {
-            fetch('/api/cleanup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: payload,
-              keepalive: true
-            });
-          }
-        }
-      });
     </script>
 </body>
 
