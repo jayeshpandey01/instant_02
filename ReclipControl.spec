@@ -8,6 +8,8 @@ a = Analysis(
     datas=[
         ('frontend/dist', 'frontend/dist'),
         ('src', 'src'),
+        ('templates', 'templates'),
+        ('static', 'static'),
         ('docker-compose.yml', '.'),
         ('cobalt', 'cobalt')
     ],

@@ -5,7 +5,14 @@ a = Analysis(
     ['desktop_app.py'],
     pathex=[],
     binaries=[],
-    datas=[('frontend/dist', 'frontend/dist'), ('src', 'src')],
+    datas=[
+        ('frontend/dist', 'frontend/dist'),
+        ('src', 'src'),
+        ('templates', 'templates'),
+        ('static', 'static'),
+        ('docker-compose.yml', '.'),
+        ('cobalt', 'cobalt')
+    ],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
