@@ -1,0 +1,2 @@
+# Netscape HTTP Cookie File
+.instagram.com	TRUE	/	TRUE	2000000000	foo	bar

@@ -1,0 +1,12 @@
+{
+    "total_requests": 52,
+    "successful_requests": 42,
+    "failed_requests": 10,
+    "platforms": {
+        "youtube": 38,
+        "instagram": 4,
+        "twitter": 0,
+        "tiktok": 0,
+        "other": 0
+    }
+}

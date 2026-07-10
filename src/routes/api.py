@@ -39,6 +39,53 @@ def _cache_set(url, resolved_url, filename):
 api_bp = Blueprint("api", __name__)
 
 
+def _resolve_direct_url_via_ytdlp(target_url, cookie_path=None):
+    """
+    Use yt-dlp to resolve a direct CDN stream URL for the given page URL.
+    Returns (direct_url, filename) or (None, None) on failure.
+    This is used as a fallback when Cobalt returns a dead tunnel URL.
+    """
+    try:
+        import yt_dlp
+        from src.downloader import augment_ytdlp_opts
+        opts = {
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'quiet': True,
+            'no_warnings': True,
+        }
+        if cookie_path:
+            opts['cookiefile'] = cookie_path
+        opts = augment_ytdlp_opts(opts)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(target_url, download=False)
+            if not info:
+                return None, None
+
+            # Build filename from title
+            title = info.get('title') or 'video'
+            safe_title = ''.join(c for c in title if c not in set('\\/:*?"<>|\n\r\t')).strip()[:80].strip()
+            filename = f"{safe_title}.mp4" if safe_title else 'video.mp4'
+
+            # Try direct URL first
+            direct_url = info.get('url')
+            if not direct_url and info.get('formats'):
+                # Try to find a direct progressive format
+                valid = [
+                    f for f in info['formats']
+                    if f.get('url') and (f.get('vcodec') or 'none').lower() != 'none'
+                    and (f.get('acodec') or 'none').lower() != 'none'
+                ]
+                if not valid:
+                    valid = [f for f in info['formats'] if f.get('url')]
+                if valid:
+                    direct_url = valid[-1]['url']
+
+            return direct_url, filename
+    except Exception as e:
+        print(f"yt-dlp direct URL resolution failed for {target_url}: {e}")
+        return None, None
+
+
 @api_bp.route("/api/cookie-files")
 def list_cookie_files():
     files = []
@@ -247,35 +294,70 @@ def cobalt_proxy():
         # Track successful resolution
         if response.status_code == 200 and json_resp.get("status") in ("tunnel", "redirect"):
             track_request(target_url, success=True)
-            
+
+            is_youtube = "youtube.com" in target_url.lower() or "youtu.be" in target_url.lower()
+            raw_url = json_resp.get("url", "")
+            is_tunnel_url = (
+                isinstance(raw_url, str)
+                and ("trycloudflare.com" in raw_url or "/tunnel" in raw_url)
+            )
+
+            # For YouTube (and other non-Instagram) tunnel URLs: replace with a direct yt-dlp CDN URL
+            # Cobalt's internal tunnels are ephemeral and frequently fail on production.
+            if is_tunnel_url:
+                try:
+                    from src.downloader import find_matching_cookie_file
+                    cookie_path = find_matching_cookie_file(target_url)
+                    with open("debug.log", "a") as f:
+                        f.write(f"DEBUG: Attempting yt-dlp resolution for {target_url} with cookie={cookie_path}\n")
+                    direct_url, direct_filename = _resolve_direct_url_via_ytdlp(target_url, cookie_path)
+                    with open("debug.log", "a") as f:
+                        f.write(f"DEBUG: yt-dlp returned direct_url={direct_url[:50] if direct_url else None}\n")
+                    if direct_url:
+                        resolved_filename = direct_filename or json_resp.get("filename", "video.mp4")
+                        _cache_set(target_url, direct_url, resolved_filename)
+                        return jsonify({
+                            "status": "tunnel",
+                            "url": direct_url,
+                            "filename": resolved_filename
+                        }), 200
+                except Exception as yt_e:
+                    with open("debug.log", "a") as f:
+                        f.write(f"yt-dlp tunnel bypass failed for {target_url}: {yt_e}\n")
+
             # Fix 3: Cache resolved Cobalt URL for future lookups
             cobalt_direct_url = json_resp.get("url", "")
             if cobalt_direct_url and "/tunnel" not in cobalt_direct_url:
                 resolved_filename = json_resp.get("filename", "video.mp4")
                 _cache_set(target_url, cobalt_direct_url, resolved_filename)
-            # Return JSON as-is — frontend JS fetch() expects {status, url, filename}
 
             # Fix Cobalt's dead internal trycloudflare URLs by rewriting them to use our own proxy
-            if "url" in json_resp:
+            if "url" in json_resp and json_resp["url"]:
                 raw_url = json_resp["url"]
                 # Only rewrite Cobalt's ephemeral trycloudflare.com tunnel URLs;
                 # direct CDN URLs (fbcdn.net, cdninstagram.com, etc.) must NOT be touched.
-                if "trycloudflare.com" in raw_url and "/tunnel" in raw_url:
-                    json_resp["url"] = re.sub(
+                if isinstance(raw_url, str) and "trycloudflare.com" in raw_url and "/tunnel" in raw_url:
+                    import urllib.parse
+                    new_url = re.sub(
                         r'https?://[^/]+\.trycloudflare\.com/tunnel',
                         request.host_url.rstrip('/') + '/tunnel',
                         raw_url
                     )
+                    sep = "&" if "?" in new_url else "?"
+                    json_resp["url"] = f"{new_url}{sep}original_url={urllib.parse.quote(target_url)}"
                 
         elif response.status_code == 200 and json_resp.get("status") == "picker" and "picker" in json_resp:
             track_request(target_url, success=True)
+            import urllib.parse
             for item in json_resp["picker"]:
-                if "url" in item and "trycloudflare.com" in item["url"] and "/tunnel" in item["url"]:
-                    item["url"] = re.sub(
+                if "url" in item and item["url"] and isinstance(item["url"], str) and "trycloudflare.com" in item["url"] and "/tunnel" in item["url"]:
+                    new_url = re.sub(
                         r'https?://[^/]+\.trycloudflare\.com/tunnel',
                         request.host_url.rstrip('/') + '/tunnel',
                         item["url"]
                     )
+                    sep = "&" if "?" in new_url else "?"
+                    item["url"] = f"{new_url}{sep}original_url={urllib.parse.quote(target_url)}"
 
                     
         elif json_resp.get("status") == "error":
@@ -308,13 +390,40 @@ def tunnel_proxy():
     target_tunnel = cobalt_url.rstrip('/') + "/tunnel"
     
     try:
+        # We don't want to pass original_url to Cobalt as it might reject unknown params
+        upstream_args = request.args.to_dict()
+        original_url = upstream_args.pop("original_url", None)
+        
         upstream = requests.get(
             target_tunnel,
-            params=request.args,
+            params=upstream_args,
             stream=True,
             timeout=60,
             allow_redirects=False
         )
+        
+        if upstream.status_code != 200 and original_url:
+            # Fall back to yt-dlp to get direct stream URL and redirect
+            try:
+                from src.downloader import find_matching_cookie_file
+                cookie_path = find_matching_cookie_file(original_url)
+                direct_url, _ = _resolve_direct_url_via_ytdlp(original_url, cookie_path)
+                if direct_url:
+                    return redirect(direct_url, code=302)
+            except Exception:
+                pass
+
+            # Legacy fallback: try basic yt-dlp format
+            try:
+                import yt_dlp
+                opts = {'format': 'best', 'quiet': True, 'no_warnings': True}
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(original_url, download=False)
+                    resolved_url = info.get('url')
+                    if resolved_url:
+                        return redirect(resolved_url, code=302)
+            except Exception:
+                pass
         
         # Do NOT exclude content-length so client can track download progress
         excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']

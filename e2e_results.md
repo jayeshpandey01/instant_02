@@ -1,0 +1,92 @@
+# E2E Device Testing Results
+
+## 1. [https://www.instagram.com/reel/DadgR-fqkat/](https://www.instagram.com/reel/DadgR-fqkat/)
+- ✅ **iPhone (Safari)**: Success (Valid MP4)
+- ✅ **Android (Chrome)**: Success (Valid MP4)
+- ✅ **Windows (Edge)**: Success (Valid MP4)
+- ✅ **Mac (Safari)**: Success (Valid MP4)
+
+## 2. [https://www.instagram.com/reel/C8P6A01p2bW/](https://www.instagram.com/reel/C8P6A01p2bW/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 3. [https://www.instagram.com/reel/C-h900RNOlP/](https://www.instagram.com/reel/C-h900RNOlP/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 4. [https://www.instagram.com/reel/C-c_YlONwK5/](https://www.instagram.com/reel/C-c_YlONwK5/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 5. [https://www.instagram.com/reel/C_q8Wq1sT7m/](https://www.instagram.com/reel/C_q8Wq1sT7m/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 6. [https://www.instagram.com/reel/DAj2G6FszYw/](https://www.instagram.com/reel/DAj2G6FszYw/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 7. [https://www.instagram.com/reel/C9_8k44vOqA/](https://www.instagram.com/reel/C9_8k44vOqA/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 8. [https://www.instagram.com/reel/DAg12wEONu_/](https://www.instagram.com/reel/DAg12wEONu_/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 9. [https://www.instagram.com/reel/C_6-9_9tW8w/](https://www.instagram.com/reel/C_6-9_9tW8w/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 10. [https://www.instagram.com/reel/C-i9w3fNn3a/](https://www.instagram.com/reel/C-i9w3fNn3a/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 11. [https://www.instagram.com/reel/DAf_w4mNx6O/](https://www.instagram.com/reel/DAf_w4mNx6O/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 12. [https://www.instagram.com/reel/C9f1q63tP9D/](https://www.instagram.com/reel/C9f1q63tP9D/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 13. [https://www.instagram.com/reel/C8_z5qFNx2Q/](https://www.instagram.com/reel/C8_z5qFNx2Q/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 14. [https://www.instagram.com/reel/C-s_w6Ftd6U/](https://www.instagram.com/reel/C-s_w6Ftd6U/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+
+## 15. [https://www.instagram.com/reel/C9V5_w4N67V/](https://www.instagram.com/reel/C9V5_w4N67V/)
+- ❌ **iPhone (Safari)**: Failed (HTTP 500)
+- ❌ **Android (Chrome)**: Failed (HTTP 500)
+- ❌ **Windows (Edge)**: Failed (HTTP 500)
+- ❌ **Mac (Safari)**: Failed (HTTP 500)
+

@@ -2814,7 +2814,8 @@
             url: url,
             videoQuality: "1080",
             downloadMode: isAudio ? "audio" : "auto",
-            filenameStyle: "basic"
+            filenameStyle: "basic",
+            cookies_data: getCookieSettings()
           };
 
           if (isAudio) {
@@ -2962,23 +2963,47 @@
       }
 
       async function triggerDownload(url, filename) {
-        let finalBlob = null;
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+        // Helper: attempt a streamed blob download from a URL
+        async function tryFetchBlob(fetchUrl) {
+          const response = await fetch(fetchUrl);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return await response.blob();
+        }
+
+        let finalBlob = null;
+
         try {
-          // Attempt to fetch the file directly as a Blob
-          const response = await fetch(url);
-          if (!response.ok) throw new Error("Network response was not ok");
-          finalBlob = await response.blob();
+          // Attempt 1: Fetch the file directly as a Blob
+          finalBlob = await tryFetchBlob(url);
         } catch (e) {
-          console.warn('Blob download failed (likely CORS). Attempting proxy...', e);
-          try {
-            const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-            const response = await fetch(proxyUrl);
-            if (!response.ok) throw new Error("Proxy response was not ok");
-            finalBlob = await response.blob();
-          } catch (proxyError) {
-            console.error('All Blob fetch methods failed.', proxyError);
+          console.warn('Direct blob fetch failed:', e.message);
+
+          // Attempt 2: If it was a server/tunnel error (5xx or network), use /api/stream redirect
+          // /api/stream issues a 302 redirect to the CDN — browser follows it natively
+          const isTunnelOrServerError = e.message.includes('500') || e.message.includes('502') ||
+            e.message.includes('503') || e.message.includes('504') ||
+            url.includes('/tunnel') || e.message.includes('Network');
+
+          if (isTunnelOrServerError) {
+            try {
+              const streamUrl = '/api/stream?url=' + encodeURIComponent(url) +
+                '&filename=' + encodeURIComponent(filename || 'download.mp4');
+              finalBlob = await tryFetchBlob(streamUrl);
+            } catch (streamErr) {
+              console.warn('Stream redirect fetch also failed:', streamErr);
+            }
+          }
+
+          // Attempt 3: CORS proxy
+          if (!finalBlob) {
+            try {
+              const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+              finalBlob = await tryFetchBlob(proxyUrl);
+            } catch (proxyError) {
+              console.warn('CORS proxy also failed:', proxyError);
+            }
           }
         }
 
@@ -3013,7 +3038,7 @@
           return;
         }
 
-        // Ultimate fallback
+        // Ultimate fallback: open /api/stream which redirects to CDN (browser handles download)
         if (isIOS) {
           const helper = document.getElementById('ios-helper');
           if (helper) {
@@ -3024,9 +3049,12 @@
             return;
           }
         }
-        
+
+        // For tunnel/CDN URLs that block blob fetching, fall back to /api/stream redirect
+        const fallbackUrl = '/api/stream?url=' + encodeURIComponent(url) +
+          '&filename=' + encodeURIComponent(filename || 'download.mp4');
         const a = document.createElement('a');
-        a.href = url;
+        a.href = fallbackUrl;
         a.download = filename || 'download';
         a.target = '_blank';
         document.body.appendChild(a);

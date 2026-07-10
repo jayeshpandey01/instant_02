@@ -1,0 +1,43 @@
+# BUG-033 FIX: Removed deprecated `version:` key (obsolete in Docker Compose v2+)
+
+services:
+  # Cobalt Node.js API Server (exposed to host on port 9000)
+  cobalt-api:
+    build:
+      context: ./cobalt
+      dockerfile: Dockerfile
+    container_name: cobalt-api
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+      - COOKIE_PATH=/app/cookies.json
+      - INSTANCE_COUNT=2
+    restart: unless-stopped
+    # BUG-032 FIX: Added healthcheck so cloudflare-tunnel waits for cobalt-api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:9000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Cloudflare Tunnel Agent (pointing to host Flask app on port 8899)
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflare-tunnel
+    command: tunnel --url http://host.docker.internal:8899
+    # BUG-034 FIX: Removed extra_hosts — on Windows Docker Desktop,
+    # host.docker.internal resolves automatically without extra_hosts.
+    # Adding extra_hosts: ["host.docker.internal:host-gateway"] OVERRIDES
+    # the automatic resolution on Windows and causes DNS failures.
+    #
+    # If deploying on Linux Docker Engine (not Desktop), uncomment:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+    #
+    # BUG-032 FIX: depends_on ensures cobalt-api is started before tunnel
+    depends_on:
+      cobalt-api:
+        condition: service_started
+    restart: unless-stopped
